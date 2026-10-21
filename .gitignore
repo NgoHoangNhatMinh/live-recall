@@ -1,0 +1,33 @@
+# Local Python environments and caches
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Assignment information
+miniProject_Assignment4_LiveRecall_System.pdf
+
+# Development and testing helpers copied from the starter package
+analyse_results.py
+caption_source.py
+load_clients.py
+monitor_server.py
+run_demo.py
+submission_check.py
+sample_transcript.txt
+network_profiles/
+bonus_asr/
+START_HERE.md
+FILES.md
+DEMO_GUIDE.md
+PUBLIC_TESTS.md
+PROTOCOL_EXAMPLES.md
+NETWORKING_PRIMER.md
+UBUNTU_SETUP.md
+
+# Generated test output
+demo_results*.csv
+demo_results*.json
+t[1-5]*.csv
+t[1-5]*.json
+*.log
