@@ -1,0 +1,2 @@
+# Mandatory deterministic path only.
+websockets>=13,<17

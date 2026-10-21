@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LiveRecall Student Client</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    #status { font-weight: 700; }
+    #live { min-height: 6rem; border: 1px solid #bbb; border-radius: .4rem; padding: 1rem; margin: 1rem 0; }
+    .naive-line { padding: .25rem 0; border-bottom: 1px dotted #ddd; }
+    button { padding: .55rem .75rem; margin: .2rem; }
+    #recall { white-space: pre-wrap; margin-top: 1rem; border-left: 3px solid #ccc; padding-left: 1rem; }
+    .hint { font-size: .9rem; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>LiveRecall</h1>
+  <p>Connection: <span id="status">disconnected</span></p>
+  <p class="hint">Starter behavior is intentionally naive: every received revision is appended as a new line.</p>
+  <div id="live"></div>
+  <div>
+    <button data-seconds="30">What did I miss? (30 s)</button>
+    <button data-seconds="15">15 s</button>
+    <button data-seconds="60">60 s</button>
+  </div>
+  <div id="recall">TODO: implement the locally maintained recall view.</div>
+  <script src="app.js"></script>
+</body>
+</html>
