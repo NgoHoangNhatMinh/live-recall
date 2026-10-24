@@ -1,12 +1,28 @@
-# Team XX - LiveRecall
+# Team 23 - LiveRecall
 
 ## Team members
 
-- Name / student ID / responsibility
+- Ngo Hoang Nhat Minh / A0301185N / responsibility
+-
+-
+-
 
 ## Ubuntu setup
 
-Exact commands from a fresh Ubuntu environment.
+Ubuntu is required for the network-impairment test because it uses `tc/netem`.
+From a fresh Ubuntu environment:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip iproute2
+```
+
+Check that the required tools are available:
+
+```bash
+python3 --version
+tc -V
+```
 
 ## Install
 
@@ -16,34 +32,134 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+The mandatory path only requires `websockets`. ASR and `ffmpeg` dependencies
+are not required.
+
 ## Required server
+
+Start the server from the repository root:
 
 ```bash
 python solution_server.py --port 8765
 ```
 
+The required WebSocket endpoint is `ws://127.0.0.1:8765`.
+
 ## Browser client
 
-Exact commands/steps.
+With the server running, serve the browser files from a second terminal:
+
+```bash
+python -m http.server 8000 --directory client
+```
+
+Open `http://127.0.0.1:8000` in a browser. The starter client connects to the
+server using session `L1`, sends `CLIENT_HELLO`, and displays received
+caption updates. The supplied browser is intentionally naive: it appends each
+revision as a separate line and its recall/reconnect behavior remains TODO.
 
 ## Public deterministic tests
 
-Exact commands and configuration used for T1-T5, including independent runs.
+Run each test with three independent server runs. The `--runs 3` option
+restarts the server for every run; use the generated results with
+`analyse_results.py` and report the median.
+
+T1 - Basic correctness:
+
+```bash
+python run_demo.py --clients 20 --duration 20 --runs 3 --output-stem t1
+```
+
+T2 - Public scale:
+
+```bash
+python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t2
+```
+
+T3 - Slow readers:
+
+```bash
+python run_demo.py --clients 100 --duration 60 --runs 3 \
+  --slow-percent 10 --slow-ms 500 --output-stem t3
+```
+
+Optional memory observation during T3:
+
+```bash
+python monitor_server.py --match solution_server.py --duration 60 --output t3_memory.csv
+```
+
+T4 - Reconnect:
+
+```bash
+python run_demo.py --clients 100 --duration 60 --runs 3 \
+  --disconnect-percent 20 --disconnect-at 15 --disconnect-seconds 5 \
+  --output-stem t4
+```
+
+T5 - Network impairment (Ubuntu only):
+
+```bash
+sudo ./network_profiles/delay_loss.sh lo
+python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t5
+sudo ./network_profiles/reset.sh lo
+```
+
+Run the submission check before submitting:
+
+```bash
+python submission_check.py
+python submission_check.py --final
+```
 
 ## Mandatory deterministic application demo
 
-Exact commands/steps for `caption_source.py`, browser clients, revision replacement, recall, late join, and reconnect/recovery.
+Use three terminals:
+
+1. Start the server:
+
+   ```bash
+   python solution_server.py --port 8765
+   ```
+
+2. Serve the browser client:
+
+   ```bash
+   python -m http.server 8000 --directory client
+   ```
+
+3. Generate deterministic captions for a long enough demo:
+
+   ```bash
+   python caption_source.py --duration 120
+   ```
+
+Open `http://127.0.0.1:8000` in at least two browser tabs/windows. The
+completed application should demonstrate visually distinct provisional and
+final captions, replacement of older revisions for the same
+`(session, segment)`, 15/30/60-second recall with a 30-second default, and
+automatic reconnect/recovery without duplicate final captions. Open another
+tab while the source is running to demonstrate late-join history.
 
 ## Design notes
 
-Briefly describe:
+The repository currently contains the working naive baseline rather than a
+completed solution:
 
-- revision/deduplication state;
-- bounded server history;
-- reconnect/late-join recovery;
-- per-client buffering/backpressure policy;
-- overload behavior and trade-offs.
+- **Revision/deduplication state:** not implemented. The baseline forwards
+  every `CAPTION_UPDATE` without replacing stale or duplicate revisions.
+- **Bounded server history:** not implemented. No finalized caption history
+  is retained for recovery or late join.
+- **Reconnect/late-join recovery:** not implemented. Every client receives an
+  empty `HISTORY`, regardless of its latest finalized segment and revision.
+- **Per-client buffering/backpressure policy:** not implemented. The source
+  handler sends directly to all clients and waits for those sends to finish.
+- **Overload behavior and trade-offs:** the baseline prioritizes simplicity
+  and visibility of the protocol over isolation and bounded memory. Slow
+  clients can delay the broadcast path, and no coalescing or overload policy
+  is applied.
 
 ## Optional ASR bonus
 
-Only if attempted. Keep these dependencies separate from the mandatory server path.
+Not attempted. Keep any ASR or `ffmpeg` dependencies separate from the
+mandatory deterministic server path.
