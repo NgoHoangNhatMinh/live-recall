@@ -4,6 +4,9 @@ venv/
 __pycache__/
 *.py[cod]
 
+# Local github configs
+.github/
+
 # Assignment information
 miniProject_Assignment4_LiveRecall_System.pdf
 
