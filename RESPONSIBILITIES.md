@@ -12,10 +12,10 @@ members attend.
 
 | Role | Name | Mandate |
 |---|---|---|
-| **A** | _(assign)_ | Make the server's notion of "what is true" correct and bounded |
-| **B** | _(assign)_ | Keep every client as fresh as its own capacity allows, without one client hurting another |
-| **C** | _(assign)_ | A thing that behaves like a usable classroom tool |
-| **D** | _(assign)_ | Nothing untrusted gets in unvalidated; nothing gets claimed without evidence |
+| **A** | Ngo Hoang Nhat Minh | Make the server's notion of "what is true" correct and bounded |
+| **B** | Xinyang | Keep every client as fresh as its own capacity allows, without one client hurting another |
+| **C** | Jordon | A thing that behaves like a usable classroom tool |
+| **D** | Jihan | Nothing untrusted gets in unvalidated; nothing gets claimed without evidence |
 
 Section 7 has the detail. Where the marks sit:
 
@@ -163,9 +163,10 @@ Nothing in section 6 starts until these are done.
    for the mandatory before/after comparison. Same parameters as the final run.
 3. ~~Repo layout and frozen interfaces~~ — done, section 2.
 4. ~~The five semantic decisions~~ — done, section 3.
-5. **Names into this file and `CONTRIBUTIONS.md`.** `README.md` currently lists
-   one of four members with "responsibility" as a placeholder. Named
-   responsibilities are graded evidence and feed the individual viva.
+5. ~~Names into this file, `README.md` and `CONTRIBUTIONS.md`~~ — done, section
+   1. Still outstanding: **student IDs** for Xinyang, Jordon and Jihan in
+   `README.md`, and the **agreed contribution percentages** in
+   `CONTRIBUTIONS.md` - that one is the team's call, not a default.
 6. **Git workflow agreed**: branch per member, small PRs, each PR reviewed by a
    different owner. Git history is explicit supporting evidence for the
    contribution statement.
@@ -216,7 +217,7 @@ Nothing in section 6 starts until these are done.
 
 ## 7. Owner responsibilities in detail
 
-### Owner A - revision state and recovery
+### Owner A (Minh) - revision state and recovery
 
 **Mandate:** make the server's notion of "what is true" correct and bounded.
 
@@ -294,7 +295,7 @@ growing?"
 
 ---
 
-### Owner B - fan-out and overload policy
+### Owner B (Xinyang) - fan-out and overload policy
 
 **Mandate:** keep every client as fresh as its own capacity allows, without
 letting any client hurt another or hold unbounded state.
@@ -381,7 +382,7 @@ implementing your overload policy."
 
 ---
 
-### Owner C - browser client
+### Owner C (Jordon) - browser client
 
 **Mandate:** a thing that behaves like a usable classroom tool, not a
 technically connected WebSocket demo. That wording is from the grading rubric's
@@ -452,7 +453,7 @@ the server?"
 
 ---
 
-### Owner D - input boundary, observability, experiments, report
+### Owner D (Jihan) - input boundary, observability, experiments, report
 
 **Mandate:** nothing untrusted gets in unvalidated, and nothing gets claimed
 without evidence.
