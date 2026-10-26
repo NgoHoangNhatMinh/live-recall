@@ -2,10 +2,16 @@
 
 ## Team members
 
-- Ngo Hoang Nhat Minh / A0301185N / responsibility
--
--
--
+- Ngo Hoang Nhat Minh / A0301185N / Owner A - revision state, final durability,
+  bounded history, HISTORY/resume semantics
+- Xinyang / _(student ID)_ / Owner B - per-client queues, fan-out, overload and
+  backpressure policy
+- Jordon / _(student ID)_ / Owner C - browser client: revision display, recall
+  windows, reconnect and recovery
+- Jihan / _(student ID)_ / Owner D - source ingest and validation, server
+  observability, public experiments, report
+
+See `RESPONSIBILITIES.md` for the detailed division of work.
 
 ## Ubuntu setup
 
