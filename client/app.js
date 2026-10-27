@@ -42,6 +42,57 @@ function appendNaively(msg) {
   liveEl.scrollTop = liveEl.scrollHeight;
 }
 
+function appendProperly(msg) {
+  const row = document.createElement("div");
+  row.className = "proper-line";
+  const state = msg.final ? "FINAL" : "PROVISIONAL";
+
+  if (state == "FINAL") {
+    var isEdited = false;
+    // Check if current message segment is created yet
+    for (const child of liveEl.children) {
+      const line = `[PROVISIONAL] segment ${msg.segment} rev `;
+      var text = child.textContent;
+      // If message in same segment exists, replace message
+      if (text.includes(line)) {
+        child.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
+        isEdited = true;
+      }
+    }
+
+    if (!isEdited) {
+      row.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
+      liveEl.appendChild(row);
+    }
+  } else {
+    var isCreated = false;
+    // Check if current message segment is created yet
+    for (const child of liveEl.children) {
+      const line = `[PROVISIONAL] segment ${msg.segment} rev `;
+      var text = child.textContent;
+      // If message in same segment exists, replace message
+      if (text.includes(line)) {
+        var idx = text.indexOf(line) + length(line);
+        var num = text.charAt(idx);
+        // If current message revision is newer than displayed message 
+        if (Number(num) < Number(msg.revision)) {
+          child.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
+        }
+        isCreated = true;
+      }
+    }
+
+    // If current message segment not created yet
+    if (!isCreated) {
+      const new_row = document.createElement("div");
+      new_row.className = "proper-line";
+      row.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
+      liveEl.appendChild(new_row);
+    }
+  }
+  liveEl.scrollTop = liveEl.scrollHeight;
+}
+
 function connect() {
   statusEl.textContent = "connecting";
   ws = new WebSocket(WS_URL);
@@ -61,7 +112,7 @@ function connect() {
   ws.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "CAPTION_UPDATE") {
-      appendNaively(msg);
+      appendProperly(msg);
     } else if (msg.type === "HISTORY") {
       console.log(`HISTORY with ${msg.items?.length ?? 0} item(s)`, msg);
       // TODO: merge history without stale/duplicate final captions.
