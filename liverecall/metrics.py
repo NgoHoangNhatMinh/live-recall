@@ -77,6 +77,7 @@ class Metrics:
             "clients_disconnected_overflow",
             "peak_queue_depth",
             "history_items",
+            "history_unrecoverable_gap",
         )
         parts = [f"{k}={snap[k]:g}" for k in interesting if k in snap]
         return "metrics " + " ".join(parts)
