@@ -57,6 +57,23 @@ class Config:
     #: is cheaper than letting it drag an ever-staler backlog.
     queue_hard_limit: int = 128
 
+    # --- lag detection and overload hysteresis (owner B) -----------------
+    #: Queueing delay, measured by ping/pong above the connection's baseline
+    #: RTT, at which a client is treated as overloaded. Well above anything a
+    #: healthy client sees, but small next to the 500 ms freshness threshold.
+    overload_lag_high: float = 0.25
+    #: Queueing delay a client must stay under before overload clears.
+    overload_lag_low: float = 0.08
+    #: Seconds a client must stay calm before overload clears. Stops the
+    #: policy flapping on and off every few frames.
+    overload_clear_hold: float = 2.0
+    #: Frames an overloaded client may have unconfirmed in flight. Anything
+    #: past this waits in our queue, where it can still be coalesced, instead
+    #: of in kernel buffers, where it cannot.
+    overload_inflight_frames: int = 3
+    #: Seconds between lag probes for a client that is keeping up.
+    probe_interval: float = 0.5
+
     # --- observability (owner D) ----------------------------------------
     #: Seconds between metric log lines. 0 disables periodic logging.
     metrics_interval_seconds: float = 5.0
