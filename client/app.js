@@ -42,6 +42,55 @@ function appendNaively(msg) {
   liveEl.scrollTop = liveEl.scrollHeight;
 }
 
+function appendProperly(msg) {
+  const row = document.createElement("div");
+  row.className = "proper-line";
+  const state = msg.final ? "FINAL" : "PROVISIONAL";
+
+  // if (state == "FINAL") {
+  var isEdited = false;
+  // Check if current message segment is created yet
+  for (const child of liveEl.children) {
+    const segment = child.dataset.segment;
+    const revision = child.dataset.revision;
+    // If message in same segment exists, replace message
+    if (msg.segment == segment && revision < msg.revision) {
+      child.textContent = String(msg.text);
+      isEdited = true;
+    }
+  }
+
+  if (!isEdited) {
+    row.dataset.segment = msg.segment;
+    row.dataset.revision = msg.revision;
+    row.textContent = String(msg.text);
+    liveEl.appendChild(row);
+  }
+  // } else {
+  //   var isCreated = false;
+  //   // Check if current message segment is created yet
+  //   for (const child of liveEl.children) {
+  //     const segment = child.dataset.segment;
+  //     const revision = child.dataset.revision;
+  //     // If message in same segment exists, replace message
+  //     if (msg.segment == segment && revision < msg.revision) {
+  //       // If current message revision is newer than displayed message 
+  //       child.textContent = String(msg.text);
+  //       isCreated = true;
+  //     }
+  //   }
+
+  //   // If current message segment not created yet
+  //   if (!isCreated) {
+  //     row.dataset.segment = msg.segment;
+  //     row.dataset.revision = msg.revision;
+  //     row.textContent = String(msg.text);
+  //     liveEl.appendChild(row);
+  //   }
+  // }
+  liveEl.scrollTop = liveEl.scrollHeight;
+}
+
 function connect() {
   statusEl.textContent = "connecting";
   ws = new WebSocket(WS_URL);
