@@ -110,7 +110,7 @@ function connect() {
   ws.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "CAPTION_UPDATE") {
-      appendNaively(msg);
+      appendProperly(msg);
     } else if (msg.type === "HISTORY") {
       console.log(`HISTORY with ${msg.items?.length ?? 0} item(s)`, msg);
       // TODO: merge history without stale/duplicate final captions.
