@@ -64,6 +64,15 @@ server using session `L1`, sends `CLIENT_HELLO`, and displays received
 caption updates. The supplied browser is intentionally naive: it appends each
 revision as a separate line and its recall/reconnect behavior remains TODO.
 
+## Unit tests
+
+Server-side invariants are covered by stdlib `unittest`, so no extra
+dependency is needed. Run from the repository root:
+
+```bash
+python -m unittest discover -s tests -t .
+```
+
 ## Public deterministic tests
 
 Run each test with three independent server runs. The `--runs 3` option
@@ -149,21 +158,33 @@ tab while the source is running to demonstrate late-join history.
 
 ## Design notes
 
-The repository currently contains the working naive baseline rather than a
-completed solution:
+Server logic lives in `liverecall/`, one module per owner; `solution_server.py`
+is wiring only. See `RESPONSIBILITIES.md` for the division of work and the
+agreed bounds.
 
-- **Revision/deduplication state:** not implemented. The baseline forwards
-  every `CAPTION_UPDATE` without replacing stale or duplicate revisions.
-- **Bounded server history:** not implemented. No finalized caption history
-  is retained for recovery or late join.
-- **Reconnect/late-join recovery:** not implemented. Every client receives an
-  empty `HISTORY`, regardless of its latest finalized segment and revision.
-- **Per-client buffering/backpressure policy:** not implemented. The source
-  handler sends directly to all clients and waits for those sends to finish.
-- **Overload behavior and trade-offs:** the baseline prioritizes simplicity
-  and visibility of the protocol over isolation and bounded memory. Slow
-  clients can delay the broadcast path, and no coalescing or overload policy
-  is applied.
+- **Revision/deduplication state:** implemented in
+  `liverecall/caption_state.py`. A final revision is durable, a higher revision
+  replaces a lower one, and a repeated revision is rejected. Rejected updates
+  are never published, so they cannot reach history or a client queue. Live
+  per-segment state is bounded by an eviction ceiling whose watermark keeps
+  evicted segments rejected.
+- **Bounded server history:** implemented in `liverecall/history.py`. A rolling
+  window of finalized captions bounded both by age (90 s) and by item count
+  (1500), so a bursty source cannot inflate it. The count bound is what makes it
+  bounded rather than merely time-limited.
+- **Reconnect/late-join recovery:** implemented. `HISTORY` returns finals
+  strictly newer than the client's `(last_segment, last_revision)` watermark and
+  no older than the requested `history_seconds`, ordered oldest to newest. A
+  client offline for longer than the retained window has missed finals that no
+  bounded history can return; that case is counted as
+  `history_unrecoverable_gap` rather than hidden.
+- **Per-client buffering:** in place. Each client has its own bounded queue and
+  writer task, so the source task never awaits a socket and one slow receiver
+  cannot stall the broadcast path.
+- **Overload/backpressure policy:** in progress. The current shedding rule is a
+  placeholder that drops the oldest provisional frames and never a final.
+  Semantic coalescing, a lag trigger based on measured backlog, and rapid
+  convergence after overload are still to be built.
 
 ## Optional ASR bonus
 
