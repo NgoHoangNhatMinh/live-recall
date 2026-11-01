@@ -10,8 +10,8 @@ only ever calls `offer()`, which is synchronous and never touches a socket.
 Each client has its own writer task draining its own bounded queue, so a client
 that stops reading can only ever hurt itself.
 
-The policy this module must implement
--------------------------------------
+The policy this module implements
+---------------------------------
 Under genuine backpressure, obsolete provisional revisions may be coalesced or
 discarded. Two things must survive:
 
@@ -21,50 +21,73 @@ discarded. Two things must survive:
 * the newest relevant revision of any still-active segment, so a recovering
   client converges to current state instead of draining stale revisions.
 
-The policy must engage because of *measured* lag, not unconditionally, and must
-return to full-update behaviour once the client catches up. The evaluator checks
+The policy engages because of *measured* lag, not unconditionally, and returns
+to full-update behaviour once the client catches up. The evaluator checks
 Normal Update Coverage precisely to catch always-on shedding.
 
-What is implemented here
-------------------------
-A correct, bounded, deliberately unsophisticated placeholder: drop the oldest
-provisional frames first. It keeps finals, keeps the newest revision per
-segment, and is bounded - so the system is honest from day one. It is not
-competitive. See the TODO(B) blocks for what replaces it.
+Measuring lag
+-------------
+Queue depth alone does not work. `await ws.send()` returns as soon as the frame
+reaches the asyncio transport, and from there the kernel socket buffers on both
+ends, plus the client library's own receive queue, absorb hundreds of small
+frames before `send()` ever blocks. On the skeleton, `peak_queue_depth` stayed
+at 1 while slow clients ran 13 s behind.
 
-MEASURED, READ THIS FIRST
--------------------------
-On a 40-client / 10%-slow / 500 ms run of this skeleton, `peak_queue_depth`
-stayed at **1**. The policy below never fired even though slow clients were
-seconds behind.
+So each session probes its own connection with WebSocket pings. A ping is
+written into the same byte stream as the captions, so its pong cannot come back
+until everything sent before it has been read off the socket by the client.
+`RTT - min RTT` is therefore the queueing delay in front of this client, which
+is exactly the staleness a caption sent now would suffer. Subtracting the
+minimum RTT means added netem delay alone does not look like overload. Every
+client answers pings automatically - browsers and the `websockets` library both
+do it below the application - so this needs no protocol extension.
 
-`await ws.send()` returns as soon as the frame is handed to the asyncio
-transport, and the transport buffers up to its high-water mark - 32768 bytes by
-default - before applying any backpressure. The backlog of a slow client
-therefore sits in the transport and kernel socket buffers, invisible to this
-deque. Queue depth is not a usable lag signal as the code stands.
+What the policy does
+--------------------
+NORMAL      Every revision is queued and sent in order: full update coverage.
+            The connection is probed every `probe_interval` seconds.
 
-Three ways out, all verified to be available on websockets 16:
+OVERLOADED  Entered when probed lag exceeds `overload_lag_high`, or when queue
+            depth exceeds `queue_soft_limit` (the socket itself is blocking).
 
-1.  Read the real backlog: `ws.transport.get_write_buffer_size()`.
-2.  Make the app queue the real buffer, by shrinking the transport window with
-    `ws.transport.set_write_buffer_limits(high=..., low=...)` so `send()`
-    applies backpressure early and depth becomes meaningful again.
-3.  Drop-on-dequeue: just before sending, ask `CaptionState` whether this
-    frame's segment already has a newer revision, and skip it if so. Nearly
-    free, needs no lag signal at all, and it is what produces rapid
-    convergence - a client resuming from a stall sends current state rather
-    than replaying the stall.
+            * Coalescing: a newer revision of a segment overwrites its queued
+              older provisional *in place*. A final overwrites its own pending
+              provisional the same way. The queue therefore holds at most one
+              frame per active segment plus the pending finals - bounded by the
+              number of segments, not by the revision rate.
+            * In-flight window: at most `overload_inflight_frames` frames may be
+              sent but not yet confirmed by a pong. Everything else waits here,
+              where it can still be coalesced, instead of in kernel buffers,
+              where it cannot. This is what turns "drop obsolete provisionals"
+              from a rule that never fires into one that does.
+            * Pacing: the client library keeps its own receive queue (16
+              frames in `websockets`) and keeps answering pings until it is
+              full, so a window alone lets that hidden queue sit full - about
+              8 s of lag for a 500 ms reader. We therefore estimate the
+              client's real read rate from the frames confirmed between late
+              pongs (see `_on_saturated`) and pace sends below it: at
+              DRAIN_GAIN straight after a late pong, PACING_GAIN after that.
+              Pacing below the source rate is what makes coalescing bite: a
+              provisional waiting for its slot is overwritten by a newer one.
 
-(1) or (2) gives the trigger; (3) gives the semantics. Expect to need both.
+            Cleared once lag stays under `overload_lag_low`, the queue stays
+            short and nothing has been coalesced for `overload_clear_hold`
+            seconds (hysteresis, so the policy does not flap). The rate
+            estimate is nudged upwards every RATE_PROBE_AFTER seconds without
+            a late pong, so a client that speeds up is paced faster until
+            nothing is being coalesced, and the policy then clears.
+
+Finals are never dropped, in either mode. A client whose pending finals alone
+exceed `queue_hard_limit` is disconnected, so it can resume through HISTORY
+rather than hold an unbounded backlog.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from collections import deque
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .metrics import Metrics
@@ -73,18 +96,46 @@ from .model import CaptionUpdate
 if TYPE_CHECKING:  # import cycle: app builds the hub which holds sessions
     from .app import App, Config
 
+#: Pace an overloaded client at this fraction of its measured read rate, so
+#: its own receive queue drains rather than refills.
+PACING_GAIN = 0.85
+#: Right after a late pong the client still holds a backlog. Pace at this
+#: lower fraction for as long as that pong was late, to drain it quickly.
+DRAIN_GAIN = 0.5
+#: Rate samples spanning more than this many seconds are only trusted to
+#: raise the estimate: over a long stretch the client may have run dry, and
+#: the slope would then measure our own pacing rather than the client.
+RATE_SAMPLE_MAX_GAP = 15.0
+#: With no late pong for this long, raise the rate estimate one step, so a
+#: client that has sped up is not held to its old rate. Deliberately slow:
+#: overshooting refills the client's hidden receive queue before any pong
+#: can report it.
+RATE_PROBE_AFTER = 5.0
+RATE_PROBE_STEP = 1.1
 
-@dataclass(frozen=True, slots=True)
+
 class Frame:
     """One queued outbound frame.
 
     `segment is None` marks a control frame such as HISTORY. Control frames are
     never dropped or reordered by the overload policy.
+
+    Mutable on purpose: coalescing overwrites a queued provisional with its
+    newer revision in place, so the newest state keeps the older one's place
+    in line instead of queueing behind it.
     """
 
-    segment: int | None
-    final: bool
-    wire: str
+    __slots__ = ("segment", "revision", "final", "wire")
+
+    def __init__(self, segment: int | None, revision: int, final: bool, wire: str) -> None:
+        self.segment = segment
+        self.revision = revision
+        self.final = final
+        self.wire = wire
+
+    @classmethod
+    def of(cls, update: CaptionUpdate) -> "Frame":
+        return cls(update.segment, update.revision, update.final, update.wire)
 
     @property
     def is_provisional(self) -> bool:
@@ -97,7 +148,12 @@ class ClientSession:
 
     __slots__ = (
         "_ws", "client_id", "_cfg", "_metrics",
-        "_pending", "_wake", "_closed", "_sent",
+        "_pending", "_latest", "_wake", "_closed", "_sent",
+        "_overloaded", "_calm_since",
+        "_probe_at", "_probe_mark", "_last_probe_at", "_rtt", "_min_rtt",
+        "_confirmed", "_closer",
+        "_rate", "_sat_at", "_sat_mark", "_drain_until", "_rate_checked_at",
+        "_next_send_at", "_last_coalesce_at",
     )
 
     def __init__(
@@ -114,11 +170,39 @@ class ClientSession:
         self._cfg = config
         self._metrics = metrics
         self._pending: deque[Frame] = deque(
-            Frame(segment=None, final=True, wire=w) for w in initial_frames
+            Frame(segment=None, revision=0, final=True, wire=w) for w in initial_frames
         )
+        # Newest queued frame for each segment, so coalescing is O(1).
+        self._latest: dict[int, Frame] = {}
         self._wake = asyncio.Event()
         self._closed = False
         self._sent = 0
+        self._overloaded = False
+        self._calm_since: float | None = None
+
+        # Lag probe state. `_probe_at` is set while a ping is outstanding;
+        # `_probe_mark` is how many frames had been sent when it went out, so
+        # its pong confirms that many frames were read by the client.
+        self._probe_at: float | None = None
+        self._probe_mark = 0
+        self._last_probe_at = 0.0
+        self._rtt = 0.0
+        self._min_rtt = float("inf")
+        self._confirmed = 0
+        self._closer: asyncio.Task | None = None
+
+        # Pacing state, used only while overloaded. `_rate` is the client's
+        # estimated read rate in frames/s. It is measured from a reference
+        # point at which the client's own queue was known to be short -
+        # connection start, or the previous late pong - to the next late pong.
+        self._rate: float | None = None
+        self._sat_at = time.monotonic()
+        self._sat_mark = 0
+        self._drain_until = 0.0
+        self._rate_checked_at = 0.0
+        self._next_send_at = 0.0
+        self._last_coalesce_at = float("-inf")
+
         if self._pending:
             self._wake.set()
 
@@ -133,22 +217,57 @@ class ClientSession:
         """
         if self._closed:
             return
-        self._pending.append(
-            Frame(segment=update.segment, final=update.final, wire=update.wire)
-        )
-        self._enforce_bounds()
+
+        if self._overloaded:
+            queued = self._latest.get(update.segment)
+            if queued is not None and queued.is_provisional:
+                # Coalesce in place. CaptionState only publishes revisions
+                # that advance the segment, so this is always newer.
+                queued.revision = update.revision
+                queued.final = update.final
+                queued.wire = update.wire
+                self._last_coalesce_at = time.monotonic()
+                self._metrics.incr("provisionals_coalesced")
+                return
+
+        frame = Frame.of(update)
+        self._pending.append(frame)
+        self._latest[update.segment] = frame
+
+        if not self._overloaded and len(self._pending) > self._cfg.queue_soft_limit:
+            # The writer cannot even hand frames to the socket fast enough.
+            self._engage(time.monotonic())
+
         self._metrics.peak("queue_depth", len(self._pending))
+
+        # Hard bound. After coalescing the queue is essentially pending finals,
+        # which can never be shed. A client this far behind is disconnected
+        # and resumes through HISTORY: bounded and recoverable, instead of an
+        # ever-staler backlog.
+        if len(self._pending) > self._cfg.queue_hard_limit:
+            self._metrics.incr("clients_disconnected_overflow")
+            self.close()
+            self._closer = asyncio.get_running_loop().create_task(
+                self._ws.close(code=1013, reason="client too far behind; resume")
+            )
+            return
+
         self._wake.set()
 
     @property
     def depth(self) -> int:
-        """Current queue depth - the lag signal the policy keys off."""
+        """Frames queued here and not yet handed to the socket."""
         return len(self._pending)
 
     @property
     def overloaded(self) -> bool:
-        """True while this client is above its soft bound."""
-        return len(self._pending) > self._cfg.queue_soft_limit
+        """True while the overload policy is engaged for this client."""
+        return self._overloaded
+
+    @property
+    def lag(self) -> float:
+        """Current queueing-delay estimate for this client, in seconds."""
+        return self._lag(time.monotonic())
 
     # --- consumer side --------------------------------------------------
 
@@ -162,9 +281,18 @@ class ClientSession:
                 frame = await self._next_frame()
                 if frame is None:
                     return
-                await self._ws.send(frame)
+                await self._ws.send(frame.wire)
                 self._sent += 1
+                if self._overloaded and self._rate:
+                    now = time.monotonic()
+                    gain = DRAIN_GAIN if now < self._drain_until else PACING_GAIN
+                    self._next_send_at = now + 1.0 / (gain * self._rate)
                 self._metrics.incr("frames_sent")
+                if self._probe_at is None and (
+                    self._overloaded
+                    or time.monotonic() - self._last_probe_at >= self._cfg.probe_interval
+                ):
+                    await self._probe()
         except Exception:
             # A dead socket is routine: the client went away or was dropped.
             # The connection handler does the deregistration in its finally.
@@ -172,68 +300,163 @@ class ClientSession:
         finally:
             self._closed = True
 
-    async def _next_frame(self) -> str | None:
+    async def _next_frame(self) -> Frame | None:
         while True:
             if self._closed:
                 return None
-            if self._pending:
-                return self._pending.popleft().wire
+            now = time.monotonic()
+            self._update_mode(now)
+
+            if self._pending and self._may_send(now):
+                frame = self._pending.popleft()
+                if frame.segment is not None and self._latest.get(frame.segment) is frame:
+                    del self._latest[frame.segment]
+                return frame
+
+            # Nothing we may send. An overloaded client still gets probed while
+            # idle, otherwise its lag reading would never refresh and the
+            # policy could never clear.
+            if self._probe_at is None and self._overloaded and (
+                self._sent > self._confirmed
+                or now - self._last_probe_at >= self._cfg.probe_interval
+            ):
+                await self._probe()
+                continue
+
             self._wake.clear()
-            await self._wake.wait()
+            if self._overloaded:
+                # Re-evaluate periodically: the clear-hold timer has to run
+                # even when nothing new arrives.
+                timeout = self._cfg.probe_interval
+                if self._pending and self._next_send_at > now:
+                    timeout = min(timeout, self._next_send_at - now)
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._wake.wait(), timeout)
+            else:
+                await self._wake.wait()
+
+    def _may_send(self, now: float) -> bool:
+        if not self._overloaded:
+            return True
+        if now < self._next_send_at:
+            return False
+        return self._sent - self._confirmed < self._cfg.overload_inflight_frames
 
     def close(self) -> None:
         """Stop the writer task and release queued frames."""
         self._closed = True
         self._pending.clear()
+        self._latest.clear()
         self._wake.set()
+
+    # --- lag probe ------------------------------------------------------
+
+    async def _probe(self) -> None:
+        """Send a ping whose pong confirms everything sent before it."""
+        now = time.monotonic()
+        self._probe_at = now
+        self._last_probe_at = now
+        self._probe_mark = self._sent
+        pong = await self._ws.ping()
+        pong.add_done_callback(self._on_pong)
+
+    def _on_pong(self, pong: asyncio.Future) -> None:
+        if pong.cancelled() or pong.exception() is not None or self._probe_at is None:
+            return
+        now = time.monotonic()
+        self._rtt = now - self._probe_at
+        if self._rtt < self._min_rtt:
+            self._min_rtt = self._rtt
+        self._confirmed = self._probe_mark
+        self._probe_at = None
+        if self._rtt - self._min_rtt > self._cfg.overload_lag_high:
+            self._on_saturated(now, self._rtt - self._min_rtt)
+        self._wake.set()
+
+    def _on_saturated(self, now: float, lag: float) -> None:
+        """Update the read-rate estimate from a pong that had to queue.
+
+        A late pong means the client had stopped reading and only resumed
+        once its own receive queue drained back down. Between two such
+        moments its queue is back at the same level, so the frames confirmed
+        in between are what it consumed: their slope is its real read rate.
+        """
+        elapsed = now - self._sat_at
+        if elapsed > 0:
+            sample = (self._confirmed - self._sat_mark) / elapsed
+            if self._rate is None:
+                self._rate = sample
+            elif elapsed <= RATE_SAMPLE_MAX_GAP:
+                self._rate = (self._rate + sample) / 2
+            else:
+                self._rate = max(self._rate, sample)
+        self._sat_at = now
+        self._sat_mark = self._confirmed
+        self._rate_checked_at = now
+        self._drain_until = now + lag
+
+    def _lag(self, now: float) -> float:
+        """Queueing delay in front of this client, above its baseline RTT.
+
+        An outstanding ping counts for as long as it has been waiting, so lag
+        is visible while it builds, not only once the pong finally returns.
+        """
+        rtt = self._rtt
+        if self._probe_at is not None:
+            rtt = max(rtt, now - self._probe_at)
+        base = self._min_rtt if self._min_rtt != float("inf") else 0.0
+        return max(0.0, rtt - base)
 
     # --- overload policy ------------------------------------------------
 
-    def _enforce_bounds(self) -> None:
-        """Keep the queue inside its bounds, shedding only obsolete state.
-
-        TODO(B): replace the scan below with the real policy. The intended
-        shape, agreed on day one:
-
-          * hold pending provisionals in a dict keyed by segment, so a newer
-            revision of an active segment *replaces* the queued older one in
-            place instead of queueing behind it (this is the coalescing the
-            assignment asks for, and it bounds provisional backlog by the
-            number of active segments rather than by the revision rate);
-          * hold finals in a separate FIFO that is never shed;
-          * engage on measured lag with hysteresis, and report
-            `overload_engaged` / `overload_cleared` so the report can show the
-            policy switching on and off rather than running always-on;
-          * on clearing, flush newest-first so the client converges to current
-            state quickly (the "rapid convergence" criterion).
-        """
-        soft = self._cfg.queue_soft_limit
-        if len(self._pending) <= soft:
+    def _update_mode(self, now: float) -> None:
+        """Engage or clear the overload policy, with hysteresis."""
+        cfg = self._cfg
+        lag = self._lag(now)
+        if not self._overloaded:
+            if lag > cfg.overload_lag_high or len(self._pending) > cfg.queue_soft_limit:
+                self._engage(now)
             return
 
+        if self._rate and now - self._rate_checked_at > RATE_PROBE_AFTER:
+            self._rate *= RATE_PROBE_STEP
+            self._rate_checked_at = now
+
+        calm = (
+            lag < cfg.overload_lag_low
+            and len(self._pending) <= cfg.overload_inflight_frames
+            and now - self._last_coalesce_at >= cfg.overload_clear_hold
+        )
+        if not calm:
+            self._calm_since = None
+        elif self._calm_since is None:
+            self._calm_since = now
+        elif now - self._calm_since >= cfg.overload_clear_hold:
+            self._overloaded = False
+            self._calm_since = None
+            self._rate = None
+            self._next_send_at = 0.0
+            self._metrics.incr("overload_cleared")
+
+    def _engage(self, now: float) -> None:
+        self._overloaded = True
+        self._calm_since = None
         self._metrics.incr("overload_engaged")
+        self._compact()
 
-        # Oldest-provisional-first. Dropping the oldest naturally preserves the
-        # newest revision of each active segment, and skipping finals and
-        # control frames preserves durable state.
-        while len(self._pending) > soft:
-            victim = next(
-                (i for i, f in enumerate(self._pending) if f.is_provisional),
-                None,
-            )
-            if victim is None:
-                break  # nothing droppable left; everything queued is durable
-            del self._pending[victim]
-            self._metrics.incr("provisionals_dropped")
+    def _compact(self) -> None:
+        """Drop queued provisionals that a newer queued frame supersedes.
 
-        # Hard bound. A client still over this is queued entirely with finals it
-        # cannot absorb. Disconnecting it is bounded and recoverable: it
-        # reconnects and resumes through HISTORY, which is cheaper than letting
-        # it drag an ever-staler backlog.
-        # TODO(B): measure this against holding the backlog before trusting it.
-        if len(self._pending) > self._cfg.queue_hard_limit:
-            self._metrics.incr("clients_disconnected_overflow")
-            self.close()
+        Runs once on engaging. While overloaded, `offer()` coalesces on the way
+        in, so superseded provisionals never accumulate again.
+        """
+        kept: deque[Frame] = deque()
+        for frame in self._pending:
+            if frame.is_provisional and self._latest.get(frame.segment) is not frame:
+                self._metrics.incr("provisionals_dropped")
+                continue
+            kept.append(frame)
+        self._pending = kept
 
 
 async def serve_client(ws, hello, app: "App") -> None:
