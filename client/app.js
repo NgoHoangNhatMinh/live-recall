@@ -22,6 +22,17 @@ const liveEl = document.getElementById("live");
 const recallEl = document.getElementById("recall");
 
 let ws;
+let retryDelay = 1000;
+const MAX_DELAY = 30000;
+
+const recallHistory = [];
+const MAX_HISTORY_DURATION = 70 * 1000;
+var history_duration = 30 * 1000;
+
+var lastCaption = {
+  segment: 0,
+  revision: 0,
+}
 
 function numericClientId() {
   const key = "liverecall-client-id";
@@ -33,14 +44,76 @@ function numericClientId() {
   return Number(value);
 }
 
-function appendNaively(msg) {
+function appendProperly(msg) {
   const row = document.createElement("div");
-  row.className = "naive-line";
-  const state = msg.final ? "FINAL" : "PROVISIONAL";
-  row.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
-  liveEl.appendChild(row);
+  row.className = "proper-line";
+
+  if (liveEl.children.length <= 0) {
+    row.dataset.segment = msg.segment;
+    row.dataset.revision = msg.revision;
+    row.textContent = String(msg.text);
+    row.dataset.source_ts = msg.source_ts;
+    liveEl.appendChild(row);
+  }
+
+  // Check if current message segment is created yet
+  for (const child of liveEl.children) {
+    const old_segment = child.dataset.segment;
+    const old_revision = child.dataset.revision;
+    // If message in same segment exists, replace message
+    if ((msg.segment == old_segment && msg.revision > old_revision) || msg.segment > old_segment) {
+      child.dataset.segment = msg.segment;
+      child.dataset.revision = msg.revision;
+      child.textContent = String(msg.text);
+      child.dataset.source_ts = msg.source_ts;
+    }
+  }
+
+  if (msg.final) {
+    record(msg.text);
+  }
+
   liveEl.scrollTop = liveEl.scrollHeight;
 }
+
+function record(value) {
+  recallHistory.push({
+    timestamp: Date.now(),
+    text: value
+  });
+
+  removeExpired();
+}
+
+function removeExpired() {
+  const cutoff = Date.now() - MAX_HISTORY_DURATION;
+
+  while (recallHistory.length > 0 && recallHistory[0].timestamp < cutoff) {
+    recallHistory.shift();
+  }
+}
+
+function renderHistory() {
+  const duration = Number(history_duration);
+  const cutoff = Date.now() - duration;
+
+  const filtered = recallHistory.filter(
+      item => item.timestamp >= cutoff
+  );
+
+  const divs = filtered.map(item => {
+      const div = document.createElement("div");
+      div.textContent = item.text;
+      return div;
+  });
+
+  recallEl.replaceChildren(...divs);
+}
+
+setInterval(() => {
+  removeExpired();
+  renderHistory();
+}, 1000);
 
 function connect() {
   statusEl.textContent = "connecting";
@@ -52,25 +125,36 @@ function connect() {
       type: "CLIENT_HELLO",
       client_id: numericClientId(),
       session: "L1",
-      last_segment: 0,       // TODO: resume latest finalized state
-      last_revision: 0,
-      history_seconds: 30
+      last_segment: lastCaption.segment,
+      last_revision: lastCaption.revision,
+      history_seconds: history_duration / 1000
     }));
   });
 
   ws.addEventListener("message", (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === "CAPTION_UPDATE") {
-      appendNaively(msg);
+      lastCaption.segment = msg.segment;
+      lastCaption.revision = msg.revision;
+      appendProperly(msg);
     } else if (msg.type === "HISTORY") {
       console.log(`HISTORY with ${msg.items?.length ?? 0} item(s)`, msg);
-      // TODO: merge history without stale/duplicate final captions.
+      for (const item of msg.items) {
+        lastCaption.segment = item.segment;
+        lastCaption.revision = item.revision;
+        recallHistory.push({
+          timestamp: Date.now(),
+          text: String(item.text)
+        });
+      }
+      renderHistory();
     }
   });
 
   ws.addEventListener("close", () => {
     statusEl.textContent = "disconnected";
-    // TODO: automatic reconnect after a short delay, using finalized resume state.
+    setTimeout(connect, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, MAX_DELAY);
   });
 
   ws.addEventListener("error", () => {
@@ -80,8 +164,9 @@ function connect() {
 
 for (const button of document.querySelectorAll("button[data-seconds]")) {
   button.addEventListener("click", () => {
-    const seconds = Number(button.dataset.seconds);
-    recallEl.textContent = `TODO: show finalized captions from the previous ${seconds} seconds using local state.`;
+    const seconds = Number(button.dataset.seconds) * 1000;
+    history_duration = seconds;
+    renderHistory();
   });
 }
 

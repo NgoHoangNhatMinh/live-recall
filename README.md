@@ -6,7 +6,7 @@
   bounded history, HISTORY/resume semantics
 - Xinyang / _(student ID)_ / Owner B - per-client queues, fan-out, overload and
   backpressure policy
-- Jordon / _(student ID)_ / Owner C - browser client: revision display, recall
+- Jordon / A0281173H / Owner C - browser client: revision display, recall
   windows, reconnect and recovery
 - Jihan / _(student ID)_ / Owner D - source ingest and validation, server
   observability, public experiments, report
