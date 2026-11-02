@@ -33,9 +33,6 @@ if TYPE_CHECKING:
 class ValidationError(ValueError):
     """Raised for a message that cannot be safely interpreted."""
 
-##No other code in this module should raise ValidationError; it is only for
-##the parsing functions to signal a malformed message. The caller can then
-##handle the error appropriately.
 def _required(msg: dict[str, Any], field: str) -> Any:
     if field not in msg:
         raise ValidationError(f"Missing required field: {field}")
@@ -133,7 +130,6 @@ def parse_caption_update(
     if not isinstance(text, str):
         raise ValidationError("text must be a string")
 
-    # An empty string is allowed: the specification doesn't forbid it.
     return CaptionUpdate.create(
         session=session,
         segment=segment,
@@ -155,11 +151,7 @@ def parse_client_hello(
     if msg.get("type") != "CLIENT_HELLO":
         raise ValidationError("Expected CLIENT_HELLO")
 
-    session = _session(_required(msg, "session"))
-    expected_session = _session(default_session)
-
-    if session != expected_session:
-        raise ValidationError("Unsupported client session")
+    session = _session(msg.get("session", default_session))
 
     client_id = _required(msg, "client_id")
     # Allow integer or string identifiers; the assignment does not
@@ -189,11 +181,7 @@ async def handle_source(ws, hello: dict[str, Any], app: "App") -> None:
         if hello.get("type") != "SOURCE_HELLO":
             raise ValidationError("Expected SOURCE_HELLO")
 
-        session = _session(_required(hello, "session"))
-        expected_session = _session(app.config.session)
-
-        if session != expected_session:
-            raise ValidationError("Unsupported source session")
+        session = _session(hello.get("session", app.config.session))
 
     except ValidationError:
         app.metrics.incr("source_invalid_hello")
