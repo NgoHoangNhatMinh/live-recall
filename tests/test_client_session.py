@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import json
+import unittest
 from dataclasses import replace
 
 from liverecall.app import Config
@@ -201,3 +202,25 @@ async def test_unanswered_ping_engages_and_answered_pings_clear():
     assert metrics.get("overload_cleared") == 1
     session.close()
     await task
+
+
+# ---------------------------------------------------------------------------
+# The tests above are module-level functions, which `unittest discover` does
+# not collect - it only looks inside TestCase subclasses. Without this adapter
+# the project's test command reported "OK" while silently skipping every test
+# in this file, which is the worst of both worlds.
+#
+# `run_async` already turns each coroutine into a plain zero-argument callable,
+# so attaching them as staticmethods is enough; the test bodies are untouched.
+# ---------------------------------------------------------------------------
+
+class ClientSessionTests(unittest.TestCase):
+    """Adapter so the module-level tests above run under unittest."""
+
+
+for _name, _fn in sorted(globals().items()):
+    if _name.startswith("test_") and callable(_fn):
+        setattr(ClientSessionTests, _name, staticmethod(_fn))
+
+if __name__ == "__main__":
+    unittest.main()
