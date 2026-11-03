@@ -5,26 +5,60 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>LiveRecall Student Client</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-    #status { font-weight: 700; }
-    #live { min-height: 6rem; border: 1px solid #bbb; border-radius: .4rem; padding: 1rem; margin: 1rem 0; }
-    .naive-line { padding: .25rem 0; border-bottom: 1px dotted #ddd; }
-    button { padding: .55rem .75rem; margin: .2rem; }
-    #recall { white-space: pre-wrap; margin-top: 1rem; border-left: 3px solid #ccc; padding-left: 1rem; }
-    .hint { font-size: .9rem; color: #555; }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #111; }
+
+    /* Connection state must be visible to the user (requirement 4). */
+    #status { font-weight: 700; padding: .1rem .5rem; border-radius: .25rem; }
+    #status.connected    { background: #e3f6e8; color: #14612c; }
+    #status.connecting   { background: #fdf3d8; color: #7a5a00; }
+    #status.disconnected { background: #fde8e8; color: #8a1c1c; }
+
+    #live {
+      min-height: 10rem; max-height: 22rem; overflow-y: auto;
+      border: 1px solid #bbb; border-radius: .4rem; padding: 1rem; margin: 1rem 0;
+    }
+
+    /* Provisional and final captions must be visually distinguishable
+       (requirement 1). Provisional is dimmed and italic with a dashed rule;
+       final is solid black with a green marker. */
+    .caption { padding: .3rem 0; border-bottom: 1px solid #f0f0f0; font-variant-numeric: tabular-nums; }
+    .caption.provisional { color: #8a8a8a; font-style: italic; border-left: 3px dashed #c9c9c9; padding-left: .6rem; }
+    .caption.final       { color: #111;    font-style: normal; border-left: 3px solid #2f9e44;  padding-left: .6rem; }
+
+    button { padding: .55rem .75rem; margin: .2rem; cursor: pointer; border: 1px solid #bbb;
+             background: #fff; border-radius: .3rem; }
+    button.active { background: #111; color: #fff; border-color: #111; }
+
+    #recall { margin-top: 1rem; border-left: 3px solid #ccc; padding-left: 1rem; }
+    .recall-line  { padding: .2rem 0; }
+    .recall-empty { color: #777; font-style: italic; }
+
+    .hint   { font-size: .9rem; color: #555; }
+    .legend { font-size: .85rem; color: #555; margin: .25rem 0 0; }
   </style>
 </head>
 <body>
   <h1>LiveRecall</h1>
-  <p>Connection: <span id="status">disconnected</span></p>
-  <p class="hint">Starter behavior is intentionally naive: every received revision is appended as a new line.</p>
+  <p>Connection: <span id="status" class="disconnected">disconnected</span></p>
+  <p class="hint">
+    Live transcript. Each segment occupies one line and is replaced in place as
+    newer revisions arrive.
+  </p>
   <div id="live"></div>
+  <p class="legend">
+    <span class="caption provisional" style="display:inline-block;border-bottom:none;">provisional</span>
+    &nbsp;
+    <span class="caption final" style="display:inline-block;border-bottom:none;">final</span>
+  </p>
+
+  <h2 style="font-size:1.05rem;margin-bottom:.2rem;">What did I miss?</h2>
   <div>
-    <button data-seconds="30">What did I miss? (30 s)</button>
     <button data-seconds="15">15 s</button>
+    <button data-seconds="30">30 s</button>
     <button data-seconds="60">60 s</button>
   </div>
   <div id="recall"></div>
+
   <script src="app.js"></script>
 </body>
 </html>
