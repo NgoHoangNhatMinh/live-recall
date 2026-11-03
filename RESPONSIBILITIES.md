@@ -116,60 +116,83 @@ Both calls are synchronous, so the event loop cannot interleave.
 
 ---
 
-## 4. Current state of the skeleton
+## 4. Current state
 
-The module split is in place and measured. `submission_check.py` passes.
+All four owners' server-side and client-side work is merged to `main`
+(PRs #1-#8). 70 unit tests pass; `submission_check.py` passes.
 
-| Test (reduced scale) | Completeness | Coverage | Normal P95 | Slow P95 |
-|---|---|---|---|---|
-| 20 clients / 20 s | 100.00% | 100.00% | 4.37 ms | — |
-| 40 clients / 30 s, 20% reconnect | 100.00% | 96.30% | 4.59 ms | — |
-| 40 clients / 30 s, 10% slow 500 ms | **95.28%** | 95.37% | 4.85 ms | 13644 ms |
+| Owner | Area | State |
+|---|---|---|
+| **A** Minh | revision state, bounded history, HISTORY/resume | Merged. 42 tests |
+| **B** Xinyang | per-client queues, RTT-based overload policy | Merged. 6 tests |
+| **C** Jordon | browser client | Merged. All six §6 demo beats implemented |
+| **D** Jihan | ingest validation, metrics | Merged. 22 tests |
+| **D** Jihan | experiments, report | **Not started** |
 
-Read that bottom row carefully, because it defines B's job.
+Measured on `main`, **single runs** - the report needs 3-run medians:
 
-*Slow-client isolation already works.* Normal clients stayed at P95 = 4.85 ms
-and 100% freshness while slow clients were 13 seconds behind. The per-client
-queue plus one writer task per client bought that, and it is a large
-improvement on the baseline's shared `asyncio.gather`.
+| Test | P50 | P95 | P99 | Fresh | Complete | Coverage |
+|---|---|---|---|---|---|---|
+| T1 20c / 20 s | 2.3 | 4.0 | 5.0 | 100.00% | 100.00% | 100.00% |
+| T2 100c / 40 s | 7.6 | 16.2 | 23.6 | 100.00% | 100.00% | 100.00% |
+| T3 100c / 60 s, 10% slow | 8.0 | 2258.8 | 7599.0 | 94.65% | **99.33%** | 95.18% |
+| T4 100c / 60 s, 20% reconnect | 5.2 | 10.2 | 13.2 | 100.00% | 100.00% | 98.33% |
 
-*Completeness is below the 99% gate, and the arithmetic says it is fixable.* A
-client sleeping 500 ms per message can absorb only ~60 messages in a 30-second
-run. The source produced 36 finals and 72 provisionals. The skeleton spent that
-scarce budget in arrival order, so slow clients got 76 of 144 expected finals.
-Spend the same 60-message budget on finals and newest-state first and all 36
-finals fit comfortably. **The overload policy is not a latency optimisation -
-it is what gets completeness through the gate.**
+Zero duplicate and zero stale captions across every run. T3 isolation: normal
+clients P95 14.7 ms at 100% freshness while slow clients sat at P50 5.5 s.
 
-*And the policy currently never fires.* `peak_queue_depth` stayed at 1 across
-that whole run. `await ws.send()` returns once the frame reaches the asyncio
-transport, which buffers 32 KB by default, so a slow client's backlog lives in
-the transport and kernel buffers where the application deque cannot see it.
-Queue depth is not yet a usable lag signal. Three verified ways out are written
-up in the header of `liverecall/client_session.py`; B should start there.
+### Two measurements worth keeping for the report and the viva
+
+**The overload policy is what gets completeness through the gate.** Before it,
+T3 completeness was 95.28% - under the 99% cap. A client absorbing one message
+per 500 ms manages ~60 messages in 30 s against 36 finals and 72 provisionals;
+spending that budget in arrival order loses finals, spending it on finals and
+newest-state first does not.
+
+**Application queue depth is not an observable lag signal.** `peak_queue_depth`
+stayed at **1** while slow clients ran 13 s behind, because `await ws.send()`
+returns once a frame reaches the asyncio transport, which buffers ~32 KB. This
+is why the merged policy measures ping/pong RTT above baseline instead.
+
+### Remaining risks
+
+- T3 clears the gate by 0.33 points. Confirm with 3 runs before quoting it.
+- T3 Fresh Final Caption Ratio is 90.00%, i.e. the slow 10% contribute almost
+  nothing. Prioritising finals ahead of queued provisionals for a lagging
+  client is the unclaimed optimisation in Hidden Challenge 1.
+- `solution_server.py:62` calls `parse_client_hello` unguarded, so a malformed
+  `CLIENT_HELLO` closes with 1011 (internal error) plus a traceback instead of
+  a graceful 1008.
 
 ---
 
-## 5. Blockers, in order
+## 5. Outstanding for submission
 
-Nothing in section 6 starts until these are done.
+The code is done. Everything below is a graded deliverable that does not exist
+yet, and all of it is section C (10) or section E (10).
 
-1. **Ubuntu VM for D, ideally for everyone.** The assignment says outright that
-   WSL is not the reference grading environment and to use a full Ubuntu VM if
-   `tc/netem` differs. T5 and the before/after comparison are measured under
-   netem on `lo`. `multipass launch --name liverecall --cpus 2 --memory 4G --disk 15G`,
-   then confirm `tc -V`.
-2. **Baseline numbers captured** from commit `4c7e5c9` (the naive broadcaster),
-   for the mandatory before/after comparison. Same parameters as the final run.
-3. ~~Repo layout and frozen interfaces~~ — done, section 2.
-4. ~~The five semantic decisions~~ — done, section 3.
-5. ~~Names into this file, `README.md` and `CONTRIBUTIONS.md`~~ — done, section
-   1. Still outstanding: **student IDs** for Xinyang, Jordon and Jihan in
-   `README.md`, and the **agreed contribution percentages** in
-   `CONTRIBUTIONS.md` - that one is the team's call, not a default.
-6. **Git workflow agreed**: branch per member, small PRs, each PR reviewed by a
-   different owner. Git history is explicit supporting evidence for the
-   contribution statement.
+1. **`report.pdf` — missing.** 4-5 pages excluding references. Required
+   contents: architecture and protocol; revision/recovery semantics;
+   backpressure/overload policy; public experiments; at least one before/after
+   comparison; P50/P95/P99 + freshness + final-completeness; failures and
+   trade-offs; limitations; short future-work direction.
+2. **`AI_USAGE.md` — still the unmodified template.** Compulsory, and the
+   "suggestion that was wrong or needed changing" section is specifically
+   assessed.
+3. **T1-T5 at `--runs 3`, medians reported.** None captured. T5 additionally
+   needs `network_profiles/delay_loss.sh` and a `reset.sh` afterwards.
+4. **The mandatory before/after comparison** against commit `4c7e5c9` (the
+   naive broadcaster), at *identical* parameters. Our development figures
+   (95.28% -> 99.33%) came from different client counts and durations and must
+   not be quoted as a comparison.
+5. **Ubuntu VM.** WSL is explicitly not the reference grading environment, and
+   T5 plus the before/after are measured under netem on `lo`.
+   `multipass launch --name liverecall --cpus 2 --memory 4G --disk 15G`, then
+   confirm `tc -V`.
+6. **Demo video**, 5-7 minutes, covering the six §6 beats.
+7. **`CONTRIBUTIONS.md` percentages** and **student IDs** for Xinyang and Jihan
+   in `README.md`. The percentages are the team's call, not a default.
+8. `python submission_check.py --final` once `report.pdf` exists.
 
 ---
 
@@ -235,11 +258,12 @@ zero across every public test.
 **Bounded live state.** Per-segment state would otherwise grow for the whole
 lecture. Eviction in `_prune()` only removes finalised segments below the lowest
 active one, and `_pruned_through` keeps rejecting them afterwards so eviction
-cannot resurrect stale revisions. There is a known hole marked `TODO(A)`: a
-source that leaves a low segment active forever blocks eviction entirely. The
-public and instructor sources complete a segment before starting the next, so it
-cannot bite - but be able to say that out loud, because "what stops this
-growing?" is the obvious viva follow-up.
+cannot resurrect stale revisions. Those two rules alone left a hole - a source
+that abandons a low segment without finalising it would block eviction forever
+- so `_force_prune()` is the backstop: above twice the ceiling it evicts
+regardless of the active-segment floor and counts `state_forced_evictions`. Be
+able to say that out loud, because "what stops this growing?" is the obvious
+viva follow-up.
 
 **The history window, bounded twice.** By time (90 s) and by count (1500). The
 count bound is the one that earns marks: a bursty hidden source could put far
