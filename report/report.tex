@@ -1,6 +1,6 @@
 \documentclass[11pt,a4paper]{article}
 
-\usepackage[margin=2.2cm]{geometry}
+\usepackage[margin=1.6cm]{geometry}
 \usepackage{booktabs}
 \usepackage{xcolor}
 \usepackage{graphicx}
@@ -14,8 +14,7 @@
 \title{\vspace{-1.5em}LiveRecall: Revision-Based Caption Distribution\\
 \large CS3103 Assignment 4 Report\\
 \large Team 23}
-\author{\small Ngo Hoang Nhat Minh (A0301185N) \and
-\small Xinyang (A0281296W)\and \small Jordon \and \small Jihan}
+\author{\small Ngo Hoang Nhat Minh (A0301185N) \\ \small Xinyang (A0281296W) \and \small Chang Jing Jie Jordon (A0281173H) \\ \small Jihan (A0287033E)}
 \date{}
 
 \begin{document}
@@ -164,55 +163,73 @@ $(0,0)$, 5\,s   & 7,  segments 10--16 & Time cutoff is applied \\
 
 \subsection{A negative result that shaped the design}
 
-The reason is that the backlog is invisible to the server. Probing one
-500\,ms reader showed its first 38 frames all acknowledged by pongs within
-2\,ms, although the reader was already falling behind; the first late pong
-arrived at frame 40 with an RTT of 5.8\,s. The client's WebSocket library
-keeps reading into its own 16-frame receive queue and only pauses once that
-is full, after which kernel socket buffers and the 32\,KiB asyncio transport
-absorb more. \emph{Queue depth is not a usable lag signal in this
-architecture.}
-
+We first triggered the overload policy on application queue depth, but with
+10\,\% slow readers lagging by about 13\,s, peak queue depth was only
+\textbf{1}. Probing a 500\,ms reader showed why: its first 38 frames were
+acknowledged by pongs within 2\,ms while it was already falling behind, and
+the first late pong (frame 40) took 5.8\,s. The client's WebSocket library
+buffers 16 frames before pausing, and kernel and transport buffers absorb
+more, so \emph{queue depth is not a usable lag signal}.
 
 \subsection{The policy we adopted}
 
-Coalescing is semantic: a newer revision overwrites a queued older
-provisional of the same segment \emph{in place}, keeping its position, and a
-final overwrites its own pending provisional the same way. The queue
-therefore holds at most one frame per active segment plus pending finals.
-Finals share the queue but are never overwritten or dropped; a client whose
-pending finals alone exceed the hard bound is closed with code 1013 and
-resumes through \textsc{history}.
+\textbf{Lag signal.} Each session pings its own connection. A ping shares the
+caption byte stream, so its pong returns only after the client has read
+everything sent before it; RTT above the connection's minimum is the queueing
+delay in front of that client, and added network delay alone does not count.
+Browsers and \texttt{websockets} answer pings automatically, so the protocol
+is unchanged.
 
-A window alone is not enough, because the client's hidden 16-frame queue
-keeps acknowledging pings until it is full. We therefore estimate each
-lagging client's read rate from the frames confirmed between two late pongs.
-At both moments the client has just resumed reading from the same queue
-level, so the slope is its true consumption rate, measured within 5\,\% of
-the configured 2 messages/s. Sends are paced at 0.5$\times$ that rate
-straight after a late pong to drain the backlog, then at 0.85$\times$. The
-estimate rises 10\,\% every 5\,s without a late pong, so a client that speeds
-up returns to full updates.
+\textbf{Two modes.} In \emph{normal} mode every revision is sent in order. A
+client becomes \emph{overloaded} when delay exceeds
+\texttt{overload\_lag\_high} or its queue exceeds the soft bound, and clears
+only after delay stays below \texttt{overload\_lag\_low}, with a short queue
+and no coalescing, for \texttt{overload\_clear\_hold} seconds. While
+overloaded:
 
-Configured values: \texttt{overload\_lag\_high}=0.25\,s (half the 500\,ms
-freshness threshold; healthy loopback pongs take $\approx$2\,ms);
-\texttt{overload\_lag\_low}=0.08\,s (a gap wide enough to give hysteresis);
-\texttt{overload\_clear\_hold}=2\,s (four probe intervals, so one fast pong
-cannot clear the policy); \texttt{overload\_inflight\_frames}=3 (enough to
-keep a recovering client busy, too few to refill its buffers);
-\texttt{probe\_interval}=0.5\,s (at most two pings per second per healthy
-client).
+\begin{itemize}
+\item \textbf{Coalescing.} A newer revision overwrites a queued older
+      provisional of the same segment in place; a final overwrites its own
+      pending provisional. The queue holds at most one frame per active
+      segment plus pending finals. Finals are never dropped; a client whose
+      queue still exceeds the hard bound after coalescing is closed with code
+      1013 and resumes through \textsc{history}.
+\item \textbf{In-flight window.} At most \texttt{overload\_inflight\_frames}
+      unconfirmed frames, so the backlog waits in our queue, where it can be
+      coalesced, not in kernel buffers.
+\item \textbf{Rate pacing.} The client's read rate is estimated from frames
+      confirmed between two late pongs, when its queue is at the same level
+      (within about 6\,\% of the true 2 messages/s). Sends are paced at
+      0.5$\times$ that rate after a late pong, then 0.85$\times$, rising
+      10\,\% every 5\,s without one, so a recovered client returns to full
+      updates.
+\end{itemize}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Reason} \\
+\midrule
+\texttt{overload\_lag\_high}        & 0.25\,s & half the 500\,ms freshness threshold \\
+\texttt{overload\_lag\_low}         & 0.08\,s & hysteresis gap \\
+\texttt{overload\_clear\_hold}      & 2\,s    & four probe intervals \\
+\texttt{overload\_inflight\_frames} & 3       & keeps backlog in our queue \\
+\texttt{probe\_interval}            & 0.5\,s  & $\le$2 pings/s per healthy client \\
+\bottomrule
+\end{tabular}
+\caption{Overload-policy parameters.}
+\end{table}
 
 
 \subsection{Why this is a correctness mechanism}
 
-The overload policy is not merely a latency optimisation. In T3 the source
-emits 76 finals and 152 provisionals in 60\,s, but a 500\,ms reader consumes
-only about 118 messages. The baseline therefore loses finals while consuming
-the stream in arrival order; semantic coalescing preserves the finals and
-newest state instead. Measured under identical parameters, this raises overall
-Final Caption Completeness from 95.13\,\% to 99.34\,%, across the 99\,\% gate
---- see \S\ref{sec:beforeafter}.
+In T3 a 500\,ms reader consumes about 118 of the 228 revisions emitted in
+60\,s. Spending that budget on finals and newest state rather than arrival
+order raises Final Caption Completeness from 95.13\,\% to 99.34\,\%, across
+the 99\,\% gate (\S\ref{sec:beforeafter}).
+
+
 
 
 % =====================================================================
@@ -322,15 +339,10 @@ Normal update coverage (\%)          & 95.18   & 95.18   & unchanged \\
 lag by roughly two thirds, but suppressing superseded provisionals reduces
 coverage for the affected clients. Coverage returns to 100\,\% once no client is
 lagging: T2 reports 100.00\,\% in all three runs, and in T3 the 90 normal clients
-received all 20\,520 revisions. The cost is a 10.09\,ms rise in normal-client
-P95 from per-client writer tasks and ping probes.
+received all 20\,520 revisions. This is why the policy is triggered by measured
+lag rather than applied unconditionally. The cost is a 10.09\,ms rise in
+normal-client P95, most likely from per-client writer tasks and ping probes.
 
-\textbf{Trade-off.} The overload policy raises completeness and
-protects normal clients, but suppressing superseded provisionals
-necessarily reduces Normal Update Coverage for the affected clients.
-Coverage returns to 100.00\,\% once no client is lagging, which
-is why the policy is triggered by measured lag rather than applied
-unconditionally.
 
 % =====================================================================
 \section{Failures, Limitations and Future Work}
@@ -339,9 +351,13 @@ unconditionally.
 \subsection{Failures}
 
 \begin{itemize}
-\item Queue depth was the wrong signal for measuring lag. That did not work because await websocket.send() usually completes when data reaches the asyncio/kernel buffers, not when the client application processes it, which could mean the client is still behind and overloaded. Hence our system uses observed RTT - minimum RTT.
-\item The baseline sends every revision in arrival order. Under T3, slow clients spend their limited receive capacity processing old provisional revisions before later final captions arrive. The final implementation instead combines obsolete provisional revisions into a single final revision. This sacrifices some intermediate updates but preserves the final state, which raises complete final completeness from 95.13\,\% to 99.34\,\%.
+\item \textbf{Queue depth was the wrong lag signal} (\S4.1): the backlog sits
+      in client-library and kernel buffers, invisible to the server, so we
+      switched to ping RTT above the minimum.
+\item \textbf{Arrival-order delivery wastes slow readers' budget} on obsolete
+      provisionals; coalescing fixed it (\S4.3).
 \end{itemize}
+
 
 \subsection{Limitations}
 
@@ -349,8 +365,11 @@ unconditionally.
 \item A client offline for more than 90\,s has missed
       finals that no bounded history can return. This is the direct
       cost of refusing to retain an unbounded transcript.
-\item Slow clients receive all finals
-      but largely outside the 500\,ms threshold.
+\item Slow readers still lag by about 5\,s and miss the last few finals of a
+      run, which are still in transit when the test ends. The client library
+      buffers 16 frames before any server-side signal can see lag, so
+      detection always costs about $16\times500$\,ms; removing it needs
+      application-level acknowledgements, which the fixed protocol lacks.
 \item One active session, as permitted by the
       specification. Multi-session routing is not implemented.
 \item Currently, network impairment increases tail age. Under T5, P99 age
@@ -359,14 +378,17 @@ unconditionally.
       reliable-TCP trade-off under loss and head-of-line blocking.
 \end{itemize}
 
+
 \subsection{Future work}
+The main remaining cost is detection delay: the server only sees a slow
+reader once its 16-frame library queue is full. An optional protocol
+extension for client credits or acknowledgements would let the server
+observe consumption directly instead of inferring it from late pongs,
+removing that delay and improving slow-client freshness.
 
-The next step is to create different priority queue for caption delivery. By separating captions into a final, latest revision, and obsolete revision queues, and prioritizing final revision delivery while discarding obsolete revisions, this
-would improve slow-client freshness while ensuring that every final is delivered or recovered. 
-
-A second improvement would be
-adaptive history sizing based on observed reconnect gaps, subject to a hard
-memory cap, rather than a fixed 90-second/1,500-item history.
+A second improvement would be adaptive history sizing based on observed
+reconnect gaps, subject to a hard memory cap, rather than a fixed
+90-second/1,500-item history.
 
 % =====================================================================
 \newpage
