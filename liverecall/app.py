@@ -34,13 +34,13 @@ class Config:
     #: Seconds a connection has to send its hello before we close it.
     hello_timeout: float = 5.0
 
-    # --- live revision state bounds (owner A) ---------------------------
+    # --- live revision state bounds (Ngo Hoang Nhat Minh) ---------------
     #: Ceiling on segments tracked for revision comparison. Finalised segments
     #: below the lowest active one are evicted past this point; the eviction
     #: watermark keeps rejecting them, so eviction cannot resurrect stale state.
     state_max_tracked_segments: int = 512
 
-    # --- history bounds (owner A) ---------------------------------------
+    # --- history bounds (Ngo Hoang Nhat Minh) ---------------------------
     #: Age cutoff for retained finalised captions. Must exceed the 60 s recall
     #: requirement with slack, so a client asking for 60 s is always satisfied.
     history_window_seconds: float = 90.0
@@ -48,7 +48,7 @@ class Config:
     #: against a source that emits segments far faster than the public one.
     history_max_items: int = 1500
 
-    # --- per-client queue bounds (owner B) ------------------------------
+    # --- per-client queue bounds (Xinyang) ------------------------------
     #: Soft bound. Above this depth the overload policy starts shedding or
     #: coalescing obsolete provisional revisions.
     queue_soft_limit: int = 32
@@ -57,7 +57,7 @@ class Config:
     #: is cheaper than letting it drag an ever-staler backlog.
     queue_hard_limit: int = 128
 
-    # --- lag detection and overload hysteresis (owner B) -----------------
+    # --- lag detection and overload hysteresis (Xinyang) ----------------
     #: Queueing delay, measured by ping/pong above the connection's baseline
     #: RTT, at which a client is treated as overloaded. Well above anything a
     #: healthy client sees, but small next to the 500 ms freshness threshold.
@@ -74,7 +74,7 @@ class Config:
     #: Seconds between lag probes for a client that is keeping up.
     probe_interval: float = 0.5
 
-    # --- observability (owner D) ----------------------------------------
+    # --- observability (Jihan) ------------------------------------------
     #: Seconds between metric log lines. 0 disables periodic logging.
     metrics_interval_seconds: float = 5.0
 

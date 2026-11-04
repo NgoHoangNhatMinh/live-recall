@@ -2,13 +2,13 @@
 
 ## Team members
 
-- Ngo Hoang Nhat Minh / A0301185N / Owner A - revision state, final durability,
+- Ngo Hoang Nhat Minh / A0301185N / revision state, final durability,
   bounded history, HISTORY/resume semantics
-- Xinyang / A0281296W / Owner B - per-client queues, fan-out, overload and
+- Xinyang / A0281296W / per-client queues, fan-out, overload and
   backpressure policy
-- Jordon / A0281173H / Owner C - browser client: revision display, recall
+- Jordon / A0281173H / browser client: revision display, recall
   windows, reconnect and recovery
-- Jihan / _(student ID)_ / Owner D - source ingest and validation, server
+- Jihan / A0287033E / source ingest and validation, server
   observability, public experiments, report
 
 See `RESPONSIBILITIES.md` for the detailed division of work.

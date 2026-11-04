@@ -1,4 +1,4 @@
-"""Owner B: deterministic tests for the per-client queue and overload policy.
+"""Xinyang: deterministic tests for the per-client queue and overload policy.
 
 No real sockets. `FakeWS.send()` blocks until the test opens its gate, and
 `FakeWS.ping()` returns a future the test resolves by hand, so lag and

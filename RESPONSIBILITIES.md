@@ -10,32 +10,32 @@ members attend.
 
 ## 1. Roles at a glance
 
-| Role | Name | Mandate |
-|---|---|---|
-| **A** | Ngo Hoang Nhat Minh | Make the server's notion of "what is true" correct and bounded |
-| **B** | Xinyang | Keep every client as fresh as its own capacity allows, without one client hurting another |
-| **C** | Jordon | A thing that behaves like a usable classroom tool |
-| **D** | Jihan | Nothing untrusted gets in unvalidated; nothing gets claimed without evidence |
+| Name                | Mandate                                                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| Ngo Hoang Nhat Minh | Make the server's notion of "what is true" correct and bounded                            |
+| Xinyang             | Keep every client as fresh as its own capacity allows, without one client hurting another |
+| Jordon              | A thing that behaves like a usable classroom tool                                         |
+| Jihan               | Nothing untrusted gets in unvalidated; nothing gets claimed without evidence              |
 
 Section 7 has the detail. Where the marks sit:
 
-| Assignment component | Marks | Owner |
-|---|---|---:|
-| A. Usable application and deterministic demo | 15 | C |
-| B. Protocol correctness and robustness | 15 | A, with B |
-| C. Public experiments and analysis | 10 | D |
-| D. Hidden performance evaluation | 30 | see below |
-| E. Code / repo / report / reproducibility | 10 | D |
-| F. Individual technical viva | 20 | everyone |
+| Assignment component                         | Marks |     Owner |
+| -------------------------------------------- | ----- | --------: |
+| A. Usable application and deterministic demo | 15    |         C |
+| B. Protocol correctness and robustness       | 15    | A, with B |
+| C. Public experiments and analysis           | 10    |         D |
+| D. Hidden performance evaluation             | 30    | see below |
+| E. Code / repo / report / reproducibility    | 10    |         D |
+| F. Individual technical viva                 | 20    |  everyone |
 
-| Hidden-performance component | Marks | Owner |
-|---|---|---:|
-| Correctness and invariants | 8 | A |
-| Normal update coverage and normal freshness | 4 | B |
-| Delay/loss tail freshness | 2 | D |
-| Challenge 1: slow-reader semantic backpressure | 6 | B |
-| Challenge 2: constrained-bandwidth semantic delivery | 6 | B |
-| Reconnect and catch-up recovery | 4 | A (incremental) + B (convergence) |
+| Hidden-performance component                         | Marks |                             Owner |
+| ---------------------------------------------------- | ----- | --------------------------------: |
+| Correctness and invariants                           | 8     |                                 A |
+| Normal update coverage and normal freshness          | 4     |                                 B |
+| Delay/loss tail freshness                            | 2     |                                 D |
+| Challenge 1: slow-reader semantic backpressure       | 6     |                                 B |
+| Challenge 2: constrained-bandwidth semantic delivery | 6     |                                 B |
+| Reconnect and catch-up recovery                      | 4     | A (incremental) + B (convergence) |
 
 Two notes on why the split is drawn here.
 
@@ -83,7 +83,7 @@ question, so everybody should be able to explain all five.
 **1. Resume semantics: `last_segment` is a watermark.**
 `HISTORY` returns only finals strictly newer than `(last_segment, last_revision)`.
 Implemented once, in `model.after_watermark()`.
-*Consequence:* a client holding segment 12 but missing segment 10 can never
+_Consequence:_ a client holding segment 12 but missing segment 10 can never
 recover 10, because its watermark hides the gap. **The overload policy must
 therefore never drop a final** - that is what makes the watermark safe.
 
@@ -93,18 +93,18 @@ wire format is fully specified in the assignment.
 
 **3. Bounds, all in `Config` in `liverecall/app.py`.**
 
-| Bound | Value | Why |
-|---|---|---|
-| `history_window_seconds` | 90 | Exceeds the 60 s recall requirement with slack |
-| `history_max_items` | 1500 | Clock-independent cap; a bursty hidden source could put far more than 120 segments in 90 s |
-| `state_max_tracked_segments` | 512 | Live per-segment state would otherwise grow for the whole lecture |
-| `queue_soft_limit` | 32 | Where the overload policy engages |
-| `queue_hard_limit` | 128 | Where a client is dropped to reconnect and resume cleanly |
+| Bound                        | Value | Why                                                                                        |
+| ---------------------------- | ----- | ------------------------------------------------------------------------------------------ |
+| `history_window_seconds`     | 90    | Exceeds the 60 s recall requirement with slack                                             |
+| `history_max_items`          | 1500  | Clock-independent cap; a bursty hidden source could put far more than 120 segments in 90 s |
+| `state_max_tracked_segments` | 512   | Live per-segment state would otherwise grow for the whole lecture                          |
+| `queue_soft_limit`           | 32    | Where the overload policy engages                                                          |
+| `queue_hard_limit`           | 128   | Where a client is dropped to reconnect and resume cleanly                                  |
 
-Tune the numbers, but tune them *there* - don't scatter new ones.
+Tune the numbers, but tune them _there_ - don't scatter new ones.
 
 **4. Write-path ordering: admit → record → publish.**
-In `ingest.handle_source`. Recording a final into history *before* publishing it
+In `ingest.handle_source`. Recording a final into history _before_ publishing it
 means a client reconnecting in that same instant finds it instead of missing it.
 
 **5. Connect-path ordering: build HISTORY and register with the hub with no
@@ -121,22 +121,22 @@ Both calls are synchronous, so the event loop cannot interleave.
 All four owners' server-side and client-side work is merged to `main`
 (PRs #1-#8). 70 unit tests pass; `submission_check.py` passes.
 
-| Owner | Area | State |
-|---|---|---|
-| **A** Minh | revision state, bounded history, HISTORY/resume | Merged. 42 tests |
-| **B** Xinyang | per-client queues, RTT-based overload policy | Merged. 6 tests |
-| **C** Jordon | browser client | Merged. All six §6 demo beats implemented |
-| **D** Jihan | ingest validation, metrics | Merged. 22 tests |
-| **D** Jihan | experiments, report | **Not started** |
+| Owner               | Area                                            | State                                     |
+| ------------------- | ----------------------------------------------- | ----------------------------------------- |
+| Ngo Hoang Nhat Minh | revision state, bounded history, HISTORY/resume | Merged. 42 tests                          |
+| Xinyang             | per-client queues, RTT-based overload policy    | Merged. 6 tests                           |
+| Jordon              | browser client                                  | Merged. All six §6 demo beats implemented |
+| Jihan               | ingest validation, metrics                      | Merged. 22 tests                          |
+| Jihan               | experiments, report                             | **Not started**                           |
 
 Measured on `main`, **single runs** - the report needs 3-run medians:
 
-| Test | P50 | P95 | P99 | Fresh | Complete | Coverage |
-|---|---|---|---|---|---|---|
-| T1 20c / 20 s | 2.3 | 4.0 | 5.0 | 100.00% | 100.00% | 100.00% |
-| T2 100c / 40 s | 7.6 | 16.2 | 23.6 | 100.00% | 100.00% | 100.00% |
-| T3 100c / 60 s, 10% slow | 8.0 | 2258.8 | 7599.0 | 94.65% | **99.33%** | 95.18% |
-| T4 100c / 60 s, 20% reconnect | 5.2 | 10.2 | 13.2 | 100.00% | 100.00% | 98.33% |
+| Test                          | P50 | P95    | P99    | Fresh   | Complete   | Coverage |
+| ----------------------------- | --- | ------ | ------ | ------- | ---------- | -------- |
+| T1 20c / 20 s                 | 2.3 | 4.0    | 5.0    | 100.00% | 100.00%    | 100.00%  |
+| T2 100c / 40 s                | 7.6 | 16.2   | 23.6   | 100.00% | 100.00%    | 100.00%  |
+| T3 100c / 60 s, 10% slow      | 8.0 | 2258.8 | 7599.0 | 94.65%  | **99.33%** | 95.18%   |
+| T4 100c / 60 s, 20% reconnect | 5.2 | 10.2   | 13.2   | 100.00% | 100.00%    | 98.33%   |
 
 Zero duplicate and zero stale captions across every run. T3 isolation: normal
 clients P95 14.7 ms at 100% freshness while slow clients sat at P50 5.5 s.
@@ -182,7 +182,7 @@ yet, and all of it is section C (10) or section E (10).
 3. **T1-T5 at `--runs 3`, medians reported.** None captured. T5 additionally
    needs `network_profiles/delay_loss.sh` and a `reset.sh` afterwards.
 4. **The mandatory before/after comparison** against commit `4c7e5c9` (the
-   naive broadcaster), at *identical* parameters. Our development figures
+   naive broadcaster), at _identical_ parameters. Our development figures
    (95.28% -> 99.33%) came from different client counts and durations and must
    not be quoted as a comparison.
 5. **Ubuntu VM.** WSL is explicitly not the reference grading environment, and
@@ -200,29 +200,29 @@ yet, and all of it is section C (10) or section E (10).
 
 ### Week 1 - end to end and correct
 
-- **A** — harden `caption_state` and `history`; unit tests for the three
+- **Ngo Hoang Nhat Minh** — harden `caption_state` and `history`; unit tests for the three
   invariants (final durability, higher revision wins, duplicate rejection) and
   for `items_since` at the watermark boundary.
-- **B** — pick the lag signal (see `client_session.py` header) and prove it
+- **Xinyang** — pick the lag signal (see `client_session.py` header) and prove it
   moves under load before writing any policy. A trigger you cannot observe
   cannot be tuned.
-- **C** — revision replacement keyed by segment, provisional vs final styling,
+- **Jordon** — revision replacement keyed by segment, provisional vs final styling,
   reconnect with backoff, connection status. A 20-line fake server returning
   canned `HISTORY` items unblocks you before A lands.
-- **D** — finish validation edge cases, get T1/T2 running on the VM, wire
+- **Jihan** — finish validation edge cases, get T1/T2 running on the VM, wire
   `monitor_server.py` into the T3 procedure.
 
 ### Week 2 - the graded mechanisms
 
-- **A** — reconnect/dedup edge cases: simultaneous reconnect burst, a client
+- **Ngo Hoang Nhat Minh** — reconnect/dedup edge cases: simultaneous reconnect burst, a client
   resuming with a watermark older than the window, late join mid-segment.
-- **B** — the real policy: per-segment coalescing, finals never shed, lag
+- **Xinyang** — the real policy: per-segment coalescing, finals never shed, lag
   trigger with hysteresis, newest-first flush on recovery. Target the 95.28% →
   ≥99% completeness jump and report `overload_engaged`/`overload_cleared` so
   the report can show it switching on and off rather than running always-on.
-- **C** — 60 s local finalized history, 15/30/60 s recall with 30 s default
+- **Jordon** — 60 s local finalized history, 15/30/60 s recall with 30 s default
   served from local state, `HISTORY` merge with no duplicate finals.
-- **D** — T3/T4 at full scale with memory observation; start the before/after
+- **Jihan** — T3/T4 at full scale with memory observation; start the before/after
   table.
 
 ### Week 3 - evidence
@@ -240,7 +240,7 @@ yet, and all of it is section C (10) or section E (10).
 
 ## 7. Owner responsibilities in detail
 
-### Owner A (Minh) - revision state and recovery
+### Ngo Hoang Nhat Minh - revision state and recovery
 
 **Mandate:** make the server's notion of "what is true" correct and bounded.
 
@@ -260,10 +260,11 @@ lecture. Eviction in `_prune()` only removes finalised segments below the lowest
 active one, and `_pruned_through` keeps rejecting them afterwards so eviction
 cannot resurrect stale revisions. Those two rules alone left a hole - a source
 that abandons a low segment without finalising it would block eviction forever
+
 - so `_force_prune()` is the backstop: above twice the ceiling it evicts
-regardless of the active-segment floor and counts `state_forced_evictions`. Be
-able to say that out loud, because "what stops this growing?" is the obvious
-viva follow-up.
+  regardless of the active-segment floor and counts `state_forced_evictions`. Be
+  able to say that out loud, because "what stops this growing?" is the obvious
+  viva follow-up.
 
 **The history window, bounded twice.** By time (90 s) and by count (1500). The
 count bound is the one that earns marks: a bursty hidden source could put far
@@ -306,7 +307,7 @@ Metrics owned: `updates_accepted`, `updates_rejected_stale`,
 
 Unit tests, no sockets needed - both classes are pure. Final-then-higher-revision
 rejected; equal revision is duplicate; lower is stale; eviction does not
-resurrect. For history: exact match at the watermark is *excluded*, the
+resurrect. For history: exact match at the watermark is _excluded_, the
 `history_seconds` cutoff boundary, the count bound, and ordering.
 `HistoryWindow` takes an injectable `clock` precisely so these run without
 sleeping.
@@ -319,7 +320,7 @@ growing?"
 
 ---
 
-### Owner B (Xinyang) - fan-out and overload policy
+### Xinyang - fan-out and overload policy
 
 **Mandate:** keep every client as fresh as its own capacity allows, without
 letting any client hurt another or hold unbounded state.
@@ -333,11 +334,11 @@ Measured on the skeleton: `peak_queue_depth` stayed at 1 while slow clients ran
 13 s behind, because `await ws.send()` returns once the frame reaches the asyncio
 transport, which buffers 32 KB before applying backpressure. The backlog lives
 in transport and kernel buffers. Three verified options are in the module
-header. Prove the signal tracks real lag *before* writing any policy - a trigger
+header. Prove the signal tracks real lag _before_ writing any policy - a trigger
 you cannot observe cannot be tuned.
 
 **2. Coalescing structure.** Pending provisionals in a dict keyed by segment, so
-a newer revision of an active segment *replaces* the queued older one in place
+a newer revision of an active segment _replaces_ the queued older one in place
 rather than queueing behind it. That bounds provisional backlog by the number of
 active segments instead of by the revision rate, which is the real win. Finals
 go in a separate FIFO that is never shed.
@@ -383,7 +384,7 @@ lost and completeness permanently reduced. Shedding is provisional-only, always.
 
 Completeness >= 99% on T3 and under `bandwidth_2mbit.sh`. Normal-client P95
 unaffected by slow readers. Normal Update Coverage back at ~100% when nothing is
-overloaded. Metrics show the policy engaging *and clearing*.
+overloaded. Metrics show the policy engaging _and clearing_.
 
 Metrics owned: `frames_sent`, `provisionals_coalesced`, `provisionals_dropped`,
 `overload_engaged`/`overload_cleared`, `peak_queue_depth`,
@@ -406,7 +407,7 @@ implementing your overload policy."
 
 ---
 
-### Owner C (Jordon) - browser client
+### Jordon - browser client
 
 **Mandate:** a thing that behaves like a usable classroom tool, not a
 technically connected WebSocket demo. That wording is from the grading rubric's
@@ -416,15 +417,15 @@ top-mark column.
 
 #### Requirement by requirement
 
-| Req | What C builds |
-|---|---|
-| 1 | Continuous caption display; provisional and final visually distinguishable |
-| 2 | Newer revision replaces older in place - no duplicate lines |
-| 3 | >=60 s rolling local finals history; "What did I miss?" defaults to 30 s, offers 15/30/60 s, **served from local state** - a server request only for what was genuinely missed |
-| 4 | Automatic reconnect with backoff, connection state visible to the user |
-| 5 | Incremental recovery - send the real watermark in `CLIENT_HELLO`, not `0` |
-| 6 | Late join: recent context, then continue live |
-| 7 | No duplicate finals after reconnect - HISTORY merge dedupes against local state |
+| Req | What C builds                                                                                                                                                                  |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Continuous caption display; provisional and final visually distinguishable                                                                                                     |
+| 2   | Newer revision replaces older in place - no duplicate lines                                                                                                                    |
+| 3   | >=60 s rolling local finals history; "What did I miss?" defaults to 30 s, offers 15/30/60 s, **served from local state** - a server request only for what was genuinely missed |
+| 4   | Automatic reconnect with backoff, connection state visible to the user                                                                                                         |
+| 5   | Incremental recovery - send the real watermark in `CLIENT_HELLO`, not `0`                                                                                                      |
+| 6   | Late join: recent context, then continue live                                                                                                                                  |
+| 7   | No duplicate finals after reconnect - HISTORY merge dedupes against local state                                                                                                |
 
 #### The data model is the whole job
 
@@ -436,7 +437,7 @@ dedupe check on string-scanning the DOM.
 #### Subtleties C must get right
 
 **The watermark is finalized state, not latest-seen.** `PROTOCOL_EXAMPLES.md` is
-explicit: `last_segment`/`last_revision` describe the latest *finalized* state
+explicit: `last_segment`/`last_revision` describe the latest _finalized_ state
 the client holds, not the newest provisional it happened to see. Sending a
 provisional revision here would ask the server to skip a final the client does
 not have.
@@ -477,7 +478,7 @@ the server?"
 
 ---
 
-### Owner D (Jihan) - input boundary, observability, experiments, report
+### Jihan - input boundary, observability, experiments, report
 
 **Mandate:** nothing untrusted gets in unvalidated, and nothing gets claimed
 without evidence.
@@ -491,16 +492,17 @@ procedure, `report.pdf`, `README.md`
 downstream trusts the result and never re-checks a field. Unknown JSON fields
 ignored, unknown message types ignored, malformed JSON counted rather than fatal.
 Section 4.1 says the instructor source may add fields such as a test-phase label
+
 - crashing on one is a zero for hidden performance. `history_seconds` is clamped
-to 60 once, here, so no caller repeats it.
+  to 60 once, here, so no caller repeats it.
 
 **The write-path ordering** in `handle_source`: admit, record, publish.
-Recording a final into history *before* publishing means a client reconnecting in
+Recording a final into history _before_ publishing means a client reconnecting in
 that same instant finds it rather than missing it. D owns the file, so D owns
 explaining it.
 
 **Metrics as the evidence base.** The load-client CSV shows what clients
-received; it cannot show *why*. These counters are how the report substantiates
+received; it cannot show _why_. These counters are how the report substantiates
 any claim about backpressure, and they are the answer to "show me that your
 policy actually engaged". Keep them cheap - they run on the fan-out path.
 
@@ -514,7 +516,7 @@ policy actually engaged". Keep them cheap - they run on the fan-out path.
   final, identical parameters, quantified, with the trade-off explained. The
   rubric wants engineering evidence, not only final numbers.
 - `bandwidth_2mbit.sh` runs as the evidence for Challenge 2.
-- **The T5 explanation**, which is a 2-mark hidden component *and* a listed viva
+- **The T5 explanation**, which is a 2-mark hidden component _and_ a listed viva
   question: why P95/P99 rise under packet loss even though WebSocket/TCP is
   reliable. Answer: retransmission and head-of-line blocking - application
   messages are not lost, they are late.
