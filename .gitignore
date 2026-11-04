@@ -34,3 +34,9 @@ demo_results*.json
 t[1-5]*.csv
 t[1-5]*.json
 *.log
+
+# Latex files
+report/*.aux
+report/*.out
+report/*.log
+report/*.pdf
