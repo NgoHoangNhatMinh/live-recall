@@ -4,7 +4,7 @@
 
 - Ngo Hoang Nhat Minh / A0301185N / Owner A - revision state, final durability,
   bounded history, HISTORY/resume semantics
-- Xinyang / _(student ID)_ / Owner B - per-client queues, fan-out, overload and
+- Xinyang / A0281206W / Owner B - per-client queues, fan-out, overload and
   backpressure policy
 - Jordon / A0281173H / Owner C - browser client: revision display, recall
   windows, reconnect and recovery
