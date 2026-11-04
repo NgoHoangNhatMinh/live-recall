@@ -1,4 +1,4 @@
-"""Owner A - bounded history window and HISTORY/resume semantics.
+"""Ngo Hoang Nhat Minh - bounded history window and HISTORY/resume semantics.
 
 Run from the repository root:
 

@@ -1,4 +1,4 @@
-"""Owner A - revision state invariants and boundedness.
+"""Ngo Hoang Nhat Minh - revision state invariants and boundedness.
 
 Run from the repository root:
 

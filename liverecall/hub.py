@@ -1,6 +1,6 @@
 """Client registry and fan-out.
 
-OWNER B.
+Xinyang.
 
 `publish()` is the hottest path in the server: it runs once per accepted
 revision and touches every connected client. Two rules keep it cheap:

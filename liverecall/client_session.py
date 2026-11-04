@@ -1,6 +1,6 @@
 """Bounded per-client queue, writer task, and the overload policy.
 
-OWNER B. This module is worth 12 of the 30 hidden-performance marks.
+Xinyang. This module is worth 12 of the 30 hidden-performance marks.
 
 Why the queue exists at all
 --------------------------

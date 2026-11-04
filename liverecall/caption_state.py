@@ -1,6 +1,6 @@
 """Per-segment revision state and final durability.
 
-OWNER A.
+Ngo Hoang Nhat Minh.
 
 This is the correctness gate. If this module is wrong, Final Caption
 Completeness drops and the entire 30-mark hidden-performance section is capped
@@ -147,7 +147,7 @@ class CaptionState:
     def active_segments(self) -> list[CaptionUpdate]:
         """Latest revision of every segment the source has not yet finalised.
 
-        Owner B uses this for the "preserve the newest relevant revision of an
+        Xinyang uses this for the "preserve the newest relevant revision of an
         active segment" half of the overload rule (assignment 4.3). These are
         provisional, so they must never be put into a HISTORY message - the load
         client flags a non-final HISTORY item as invalid.

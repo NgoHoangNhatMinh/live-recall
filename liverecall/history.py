@@ -1,6 +1,6 @@
 """Bounded finals window, and the HISTORY/resume reply.
 
-OWNER A.
+Ngo Hoang Nhat Minh.
 
 The assignment requires a bounded recent-history window large enough to satisfy
 recall and late-join requests of up to 60 s of finalised captions, and

@@ -1,6 +1,6 @@
 """Counters and observability.
 
-OWNER D.
+Jihan.
 
 This module exists because the two advanced hidden challenges are graded on
 behaviour that is invisible in the load-client CSV. The CSV shows what clients
