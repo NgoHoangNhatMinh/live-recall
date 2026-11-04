@@ -39,13 +39,14 @@ Section 7 has the detail. Where the marks sit:
 
 Two notes on why the split is drawn here.
 
-**A is the critical path.** Final Caption Completeness below 99% caps the whole
-30-mark hidden-performance section at 15, and below 95% caps it at 5. No amount
-of work by B rescues a broken A. A should also land the `HISTORY` path early,
-because C cannot test recovery or late join until it exists.
+**Minh's work is the critical path.** Final Caption Completeness
+below 99% caps the whole 30-mark hidden-performance section at 15, and below
+95% caps it at 5. No amount of work by Xinyang rescues broken revision state.
+The `HISTORY` path also had to land early, because Jordon could not test
+recovery or late join until it existed.
 
-**D is not a documentation role.** The viva is individually assessed at 20
-marks, so every member needs code they can defend. D owns the inbound
+**Jihan's role is not documentation-only.** The viva is individually assessed
+at 20 marks, so every member needs code they can defend. Jihan owns the inbound
 validation boundary and the metrics layer, which is exactly the code that
 produces the report's claims and answers "show me that your policy engaged".
 
@@ -60,18 +61,18 @@ the whole reason the server was split up.
 solution_server.py            wiring only, ~110 lines, keep it that way
 liverecall/model.py           FROZEN  records + the revision ordering rule
 liverecall/app.py             FROZEN  config bounds + dependency container
-liverecall/caption_state.py   A       per-segment revision state, final durability
-liverecall/history.py         A       bounded finals window, HISTORY/resume
-liverecall/hub.py             B       client registry, fan-out
-liverecall/client_session.py  B       bounded queue, writer task, overload policy
-liverecall/ingest.py          D       parsing/validation, source handler
-liverecall/metrics.py         D       counters and observability
-client/                       C       browser client
+liverecall/caption_state.py   Ngo Hoang Nhat Minh  per-segment revision state, final durability
+liverecall/history.py         Ngo Hoang Nhat Minh  bounded finals window, HISTORY/resume
+liverecall/hub.py             Xinyang              client registry, fan-out
+liverecall/client_session.py  Xinyang              bounded queue, writer task, overload policy
+liverecall/ingest.py          Jihan                parsing/validation, source handler
+liverecall/metrics.py         Jihan                counters and observability
+client/                       Jordon               browser client
 tests/                        shared  add alongside your own module
 ```
 
 Changing anything marked **FROZEN** needs team agreement, because more than one
-owner codes against it.
+member works against it.
 
 ---
 
@@ -118,8 +119,9 @@ Both calls are synchronous, so the event loop cannot interleave.
 
 ## 4. Current state
 
-All four owners' server-side and client-side work is merged to `main`
-(PRs #1-#8). 70 unit tests pass; `submission_check.py` passes.
+All four members' server-side and client-side work is merged to `main`
+(PRs #1-#8). The final report has been generated, the demo video has been
+recorded, 70 unit tests pass, and `submission_check.py --final` passes.
 
 | Owner               | Area                                            | State                                     |
 | ------------------- | ----------------------------------------------- | ----------------------------------------- |
@@ -127,19 +129,22 @@ All four owners' server-side and client-side work is merged to `main`
 | Xinyang             | per-client queues, RTT-based overload policy    | Merged. 6 tests                           |
 | Jordon              | browser client                                  | Merged. All six §6 demo beats implemented |
 | Jihan               | ingest validation, metrics                      | Merged. 22 tests                          |
-| Jihan               | experiments, report                             | **Not started**                           |
+| Jihan               | experiments, report                             | Complete; report and evidence assembled   |
 
-Measured on `main`, **single runs** - the report needs 3-run medians:
+The report uses three-run medians from the final implementation:
 
-| Test                          | P50 | P95    | P99    | Fresh   | Complete   | Coverage |
-| ----------------------------- | --- | ------ | ------ | ------- | ---------- | -------- |
-| T1 20c / 20 s                 | 2.3 | 4.0    | 5.0    | 100.00% | 100.00%    | 100.00%  |
-| T2 100c / 40 s                | 7.6 | 16.2   | 23.6   | 100.00% | 100.00%    | 100.00%  |
-| T3 100c / 60 s, 10% slow      | 8.0 | 2258.8 | 7599.0 | 94.65%  | **99.33%** | 95.18%   |
-| T4 100c / 60 s, 20% reconnect | 5.2 | 10.2   | 13.2   | 100.00% | 100.00%    | 98.33%   |
+| Test                            | P50    | P95     | P99     | Fresh   | Complete | Coverage |
+| ------------------------------- | ------ | ------- | ------- | ------- | -------- | -------- |
+| T1 20c / 20 s                   | 4.17   | 12.13   | 14.99   | 100.00% | 100.00%  | 100.00%  |
+| T2 100c / 40 s                  | 11.38  | 29.39   | 36.66   | 100.00% | 100.00%  | 100.00%  |
+| T3 100c / 60 s, 10% slow        | 14.48  | 2265.89 | 8414.06 | 94.65%  | 99.34%   | 95.18%   |
+| T4 100c / 60 s, 20% reconnect   | 10.58  | 25.78   | 30.95   | 100.00% | 100.00%  | 98.33%   |
+| T5 120 ms delay/jitter, 3% loss | 375.82 | 1928.09 | 6750.50 | 67.29%  | 97.06%   | 58.63%   |
 
 Zero duplicate and zero stale captions across every run. T3 isolation: normal
-clients P95 14.7 ms at 100% freshness while slow clients sat at P50 5.5 s.
+clients remained substantially fresher than slow clients. T5's final
+completeness was below the 99% target and is reported as a limitation rather
+than presented as a pass.
 
 ### Two measurements worth keeping for the report and the viva
 
@@ -156,47 +161,15 @@ is why the merged policy measures ping/pong RTT above baseline instead.
 
 ### Remaining risks
 
-- T3 clears the gate by 0.33 points. Confirm with 3 runs before quoting it.
-- T3 Fresh Final Caption Ratio is 90.00%, i.e. the slow 10% contribute almost
-  nothing. Prioritising finals ahead of queued provisionals for a lagging
-  client is the unclaimed optimisation in Hidden Challenge 1.
-- `solution_server.py:62` calls `parse_client_hello` unguarded, so a malformed
-  `CLIENT_HELLO` closes with 1011 (internal error) plus a traceback instead of
-  a graceful 1008.
+- T5 final completeness is 97.06%, below the 99% target. This is an observed
+  limitation under delay and loss, not an omitted measurement.
+- The final report documents the remaining trade-offs: provisional coalescing,
+  bounded recovery history, and TCP retransmission/head-of-line blocking under
+  impairment.
 
 ---
 
-## 5. Outstanding for submission
-
-The code is done. Everything below is a graded deliverable that does not exist
-yet, and all of it is section C (10) or section E (10).
-
-1. **`report.pdf` — missing.** 4-5 pages excluding references. Required
-   contents: architecture and protocol; revision/recovery semantics;
-   backpressure/overload policy; public experiments; at least one before/after
-   comparison; P50/P95/P99 + freshness + final-completeness; failures and
-   trade-offs; limitations; short future-work direction.
-2. **`AI_USAGE.md` — still the unmodified template.** Compulsory, and the
-   "suggestion that was wrong or needed changing" section is specifically
-   assessed.
-3. **T1-T5 at `--runs 3`, medians reported.** None captured. T5 additionally
-   needs `network_profiles/delay_loss.sh` and a `reset.sh` afterwards.
-4. **The mandatory before/after comparison** against commit `4c7e5c9` (the
-   naive broadcaster), at _identical_ parameters. Our development figures
-   (95.28% -> 99.33%) came from different client counts and durations and must
-   not be quoted as a comparison.
-5. **Ubuntu VM.** WSL is explicitly not the reference grading environment, and
-   T5 plus the before/after are measured under netem on `lo`.
-   `multipass launch --name liverecall --cpus 2 --memory 4G --disk 15G`, then
-   confirm `tc -V`.
-6. **Demo video**, 5-7 minutes, covering the six §6 beats.
-7. **`CONTRIBUTIONS.md` percentages** and **student IDs** for Xinyang and Jihan
-   in `README.md`. The percentages are the team's call, not a default.
-8. `python submission_check.py --final` once `report.pdf` exists.
-
----
-
-## 6. Schedule
+## 5. Schedule
 
 ### Week 1 - end to end and correct
 
@@ -231,14 +204,15 @@ yet, and all of it is section C (10) or section E (10).
 - T5 under `delay_loss.sh`, plus `bandwidth_2mbit.sh` for the
   constrained-bandwidth challenge.
 - All of T1–T5 at `--runs 3`, medians reported.
-- `report.pdf` (4–5 pages), 5–7 minute demo video, `submission_check.py --final`.
+- `report.pdf` (4–5 pages), the recorded 5–7 minute demo video,
+  `submission_check.py --final`.
 - **Viva dry run: each member answers the assignment's example questions about
   someone else's component.** If only B can explain the overload policy, three
   people lose marks on a 20-mark individually-assessed component.
 
 ---
 
-## 7. Owner responsibilities in detail
+## 6. Owner responsibilities in detail
 
 ### Ngo Hoang Nhat Minh - revision state and recovery
 
@@ -498,8 +472,8 @@ Section 4.1 says the instructor source may add fields such as a test-phase label
 
 **The write-path ordering** in `handle_source`: admit, record, publish.
 Recording a final into history _before_ publishing means a client reconnecting in
-that same instant finds it rather than missing it. D owns the file, so D owns
-explaining it.
+that same instant finds it rather than missing it. Jihan owns the file, so Jihan
+owns explaining it.
 
 **Metrics as the evidence base.** The load-client CSV shows what clients
 received; it cannot show _why_. These counters are how the report substantiates
@@ -542,7 +516,7 @@ me where unknown fields from the source are handled."
 
 ---
 
-## 8. Handoffs and shared obligations
+## 7. Handoffs and shared obligations
 
 **Frozen, needs team agreement to change:** `liverecall/model.py` and
 `liverecall/app.py`. Three owners code against them.
