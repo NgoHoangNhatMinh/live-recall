@@ -40,73 +40,169 @@ If setup eats five minutes you lose a third of the slot. Arrive warm.
 | 5:00–13:30 | Questions |
 | 13:30–15:00 | Buffer — do not plan to use it |
 
-## 3. Demo script — five minutes, in this order
+## 3. Presentation script — timed, with speakers
 
-**Beat 1+2 — revision replacement and provisional vs final** *(~60 s)*
-Point at one line in the transcript as it mutates. Say: "each segment is one
-line; it's grey and italic while provisional, and turns solid with a green rule
-when the source marks it final — `2·r1` to `2·r2` to `2·r3` in place, never a
-duplicate line." Let them watch one full segment complete.
+Stage directions are in *italics*. Spoken lines are the ones to rehearse — say
+them in your own words, but hit the underlined ideas.
 
-**Beat 3 — "What did I miss?"** *(~45 s)*
-Click 15 s, then 30 s, then 60 s. Say: "30 s is the default; this comes
-entirely from local state — the client keeps 90 s of finalized captions, so
-there is no server round trip. The protocol has no mid-connection history
-request by design."
+---
 
-**Beat 6 — late join** *(~45 s)*
-Open the second tab. Point at the console: `HISTORY with N item(s)`. Say: "a
-new client sends `CLIENT_HELLO` with watermark `(0,0)`, gets the recent window,
-and continues live from there."
+### 0:00–0:45 — what it is, and the one design claim
 
-**Beat 4+5 — disconnect, reconnect, incremental recovery** *(~90 s)*
+*Server, HTTP server and source are already running. Tab A shows a populated
+transcript.*
 
-> **Do NOT `Ctrl-C` the server, and do NOT restart `caption_source.py`.** See
-> the warning box below — either one freezes the transcript.
+> "LiveRecall distributes a live caption stream to many students at once.
+> Captions arrive as **revisions** — a segment is provisional while the
+> recogniser is still refining it, then final. The networking problem is
+> delivering that to a hundred clients while staying correct and fresh when
+> some of them are slow, some disconnect, and the network degrades.
+>
+> One design claim shapes everything: **correctness is ranked above freshness.**
+> Final caption completeness below 99 % caps the performance mark regardless of
+> latency, and the spec treats unbounded state as a correctness failure. So
+> every bound in our server is explicit, and every one is in a single `Config`
+> class.
+>
+> The server is one asyncio process: one task per connection, plus a writer
+> task and a bounded queue per client. Jordon will show the application first."
 
-Drop only the *client's* connection, leaving the server and source running.
-In tab A's DevTools **Console**, run one line:
+---
+
+### 0:45–3:00 — live captions, revision replacement, recall
+
+*Point at the transcript in tab A.*
+
+> "Each caption segment is **one line**, and it's replaced in place as newer
+> revisions arrive — watch segment N: `r1`, `r2`, then `r3`."
+
+*Wait for one segment to complete. Point at the colour change.*
+
+> "Provisional is dimmed and italic with a dashed rule; final is solid with a
+> green rule. So a student can see at a glance which text is settled. Newer
+> revisions **replace** — they never append a duplicate line."
+
+*Scroll up briefly to show earlier segments are retained, then back down.*
+
+> "Now 'What did I miss?'."
+
+*Click 15 s, then 30 s, then 60 s. Point at the list growing each time.*
+
+> "30 seconds is the default, with 15 and 60 available. This is served
+> **entirely from local state** — the client keeps 90 seconds of finalized
+> captions in memory, so there is no server round trip. That's deliberate:
+> the protocol has no mid-connection history request, so the only way to answer
+> this instantly is to hold it locally."
+
+---
+
+### 3:00–3:45 — late join
+
+*Open the second tab.*
+
+> "A student arriving mid-lecture. It sends `CLIENT_HELLO` with watermark
+> zero-zero…"
+
+*Point at the DevTools console: `HISTORY with N item(s)`.*
+
+> "…and the server returns the recent window — finals only, oldest first. It
+> renders that context and then continues live from the same code path."
+
+---
+
+### 3:45–4:45 — disconnect, reconnect, incremental recovery
+
+*In tab A's console, paste the prepared line.*
 
 ```js
 retryDelay = 8000; ws.close()
 ```
 
-1. The status immediately reads `disconnected - retrying in 8s` — the UI
-   narrates the beat for you
-2. The server and source keep running, so ~10 segments are genuinely missed
-3. At 8 s it reconnects on its own, sends its real finalized watermark, and the
-   gap fills in
+> "I've dropped this client's connection. The status shows it detected the loss
+> and is retrying — and note the server and the lecture are still running, so
+> it is genuinely missing content right now."
 
-`app.js` is loaded as a classic script, so its top-level `ws` and `retryDelay`
-are reachable from the console. `retryDelay` resets to 1 s on a successful
-connect, so this is repeatable. Plain `ws.close()` works too but reconnects
-after 1 s — too fast to show a convincing gap.
+*Count the gap aloud, ~8 s. Then it reconnects by itself.*
 
-**DevTools "Offline" does not work for this.** Chrome's network emulation
-applies to new HTTP requests, not to an already-established WebSocket: the
-socket stays up and captions keep arriving. Same for the Offline checkboxes
-under Network conditions and Application → Service Workers. Firefox's
-`File → Work Offline` does close WebSockets if you want a non-console method.
+> "It reconnected on its own and resumed from its latest **finalized**
+> watermark — not the newest revision it happened to see. So the server sent
+> only the finals it actually missed, and **nothing appears twice**, because
+> recovered items go through exactly the same acceptance rules as live updates."
 
-**Do not use a firewall rule on port 8765.** `iptables -j REJECT` there also
-resets the *source's* connection and kills `caption_source.py`, putting you
-back in the freeze trap below. Filtering only the browser's socket means
-matching its ephemeral port, which is too fiddly live.
+---
 
-Say: "it reconnected on its own and resumed from its latest **finalized**
-watermark, so the server sent only what it actually missed — and nothing
-appears twice, because recovered finals go through the same acceptance rules as
-live updates."
+### 4:45–5:45 — the overload policy and the negative result
 
-This is better than killing the server, not just safer: the source keeps
-producing throughout, so there is genuinely missed content to recover rather
-than an empty gap.
+*Switch to the T3 metrics log / results, already open.*
 
-**Keep the outage to ~5 seconds.** The reconnect backoff doubles on each failed
-attempt (1 s, 2 s, 4 s … capped at 30 s), so a 30-second outage can leave you
-waiting on camera. There is no UI button to force an immediate retry, and
-reloading the tab makes it a *late join* rather than a resume — which is a
-different beat.
+> "The hard part isn't the happy path, it's a client that reads slower than
+> captions are produced. Our first design triggered on **application queue
+> depth** — and measurement killed it. With slow readers lagging thirteen
+> seconds, peak queue depth was **one**. `await ws.send()` returns as soon as
+> the frame reaches the asyncio transport, so the backlog was sitting in kernel
+> and client-library buffers, invisible to us. The policy would never have
+> fired.
+>
+> So we measure lag **directly**: each session pings its own connection. A ping
+> goes into the same byte stream as the captions, so its pong can't come back
+> until the client has read everything before it. RTT minus the minimum RTT is
+> the queueing delay in front of that client — and subtracting the minimum
+> means pure network delay doesn't look like overload. Every WebSocket client
+> answers pings automatically, so this needs no protocol extension.
+>
+> Above 250 ms of lag we engage three mechanisms: a newer revision of a segment
+> **overwrites its queued older provisional in place**, so the queue holds at
+> most one frame per active segment; at most three frames may be unconfirmed,
+> which is what forces frames to wait where we can still coalesce them; and we
+> pace sends at 0.85 of the client's estimated read rate so its hidden receive
+> queue drains. **Finals are never shed** — because resume uses a watermark, a
+> dropped final leaves a hole no history can repair.
+>
+> It clears only after two seconds below 80 ms, so it can't flap."
+
+*Point at the counters.*
+
+> "In T3, `overload_engaged` is exactly **10** — matching the ten slow readers,
+> with no normal client affected."
+
+*Hand to Jihan.*
+
+---
+
+### 5:45–6:15 — the numbers
+
+> "Three-run medians on Ubuntu, harness unmodified. At a hundred clients on a
+> clean network: **100 % completeness, 100 % update coverage**, P95 29 ms.
+>
+> With ten percent slow readers, completeness is **99.34 %** — through the gate
+> — and the ninety normal clients are untouched at P95 29 ms and 100 %
+> freshness. Against the naive baseline at identical parameters, completeness
+> went **95.13 to 99.34**, and slow-client lag fell about two thirds. The cost
+> was ten milliseconds on normal-client P95, which we think is the writer tasks
+> and ping probes.
+>
+> Duplicate and stale counts were **zero in every run**."
+
+> "Happy to take questions."
+
+---
+
+### If something breaks
+
+- **Transcript frozen / nothing arriving** → check terminal 3: the source may
+  have exited. **Do not restart it** (see the traps below). Say "the generator
+  has finished its run" and move to the recall and reconnect beats, which work
+  from local state and history.
+- **`ws is not defined` in the console** → you are in the wrong frame or an
+  iframe context; pick the top frame in the console's context dropdown. Fallback:
+  stop the HTTP server in terminal 2, which drops nothing — instead use
+  Firefox's `File → Work Offline` if available.
+- **Reconnect takes too long** → `retryDelay` doubled from an earlier attempt.
+  Say so, and reload the tab to reset it, describing it as a late join.
+- **Anything unrecoverable** → go to the report tables and the 70-test suite.
+  You can discuss every result without a live system.
+
+---
 
 ### ⚠️ Two things that will freeze the demo
 
@@ -125,10 +221,10 @@ submission. But it leaves you with no source, and the only way back is a full
 restart of everything *including both browser tabs*, which costs you the
 remainder of the slot.
 
-**Closer** *(~30 s)*
-"T2 at 100 clients is 100 % complete with 100 % update coverage; under 10 %
-slow readers completeness is 99.34 % while the 90 normal clients still get
-every revision."
+**DevTools "Offline" does not work for the disconnect beat.** Chrome's network
+emulation applies to new HTTP requests, not to an already-established
+WebSocket: the socket stays up and captions keep arriving. Use the console line
+above.
 
 ## 4. Code location map — for "show me the code"
 
